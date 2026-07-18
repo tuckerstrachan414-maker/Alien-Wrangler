@@ -75,6 +75,20 @@ const C = {
   // glass + accents
   gl0: '#3a5a78', gl1: '#6fa8cc', gl2: '#b3ddf0',
   cy:  '#41f0d8', glow: '#ffd75e',
+
+  // suburban houses (cream / tan / brick walls)
+  wl0: '#b8a582', wl1: '#d8c8a4', wl2: '#efe2c2',   // cream wall
+  wt0: '#a67c56', wt1: '#c49a70', wt2: '#e0bb8e',   // tan wall
+  br0: '#8a3a2e', br1: '#b0503e', br2: '#c86a52',   // brick wall
+
+  // tropical foliage (richer/darker than lf)
+  jg0: '#123a17', jg1: '#1f5622', jg2: '#2c7830', jg3: '#45a03f', jg4: '#67c85e',
+  // volcanic rock
+  vrk0: '#2a2530', vrk1: '#3d3742', vrk2: '#544b58', vrk3: '#6e6472',
+  // lava
+  lav0: '#7a1a10', lav1: '#c23a12', lav2: '#f07018', lav3: '#ffc23a',
+  // ash / smoke
+  ash: '#b8b0a8', ash2: '#8a8078',
 };
 
 /* ============================ PLAYER ============================ */
@@ -365,6 +379,7 @@ export function buildUfo() {
 export const T = {
   GRASS: 0, GRASS2: 1, WOODCHIP: 2, SAND: 3, DIRT: 4, CONCRETE: 5,
   ASPHALT: 6, PLANK: 7, WATER: 8, GRAVEL: 9, CORNFIELD: 10, PATH: 11,
+  JUNGLE: 12, FLOWERS: 13, LAVAROCK: 14,
 };
 
 function speckleTile(base, specks, seed, density = 14) {
@@ -425,6 +440,22 @@ export function buildTiles() {
     return c;
   })();
   tiles[T.PATH] = speckleTile('#b8a888', ['#a89878', '#c8b898', '#9a8a6a'], 111, 9);
+  tiles[T.JUNGLE] = speckleTile('#2c7830', ['#1f5622', '#45a03f', '#123a17'], 123, 16);
+  tiles[T.FLOWERS] = (() => {
+    // jungle-toned base so it blends with JUNGLE — only the blossoms stand out
+    const t = speckleTile('#2c7830', ['#1f5622', '#45a03f'], 131, 12);
+    const x = t.getContext('2d');
+    const rnd = mulberry(77);
+    for (const col of ['#f4dd7a', '#e05a48', '#eef1f7', '#d585d0']) {
+      const fx = Math.floor(rnd() * 14) + 1, fy = Math.floor(rnd() * 14) + 1;
+      x.fillStyle = col; x.fillRect(fx, fy, 1, 1);
+      x.fillRect(fx - 1, fy, 1, 1); x.fillRect(fx + 1, fy, 1, 1);
+      x.fillRect(fx, fy - 1, 1, 1); x.fillRect(fx, fy + 1, 1, 1);
+      x.fillStyle = '#f6da79'; x.fillRect(fx, fy, 1, 1);
+    }
+    return t;
+  })();
+  tiles[T.LAVAROCK] = speckleTile('#3d3742', ['#2a2530', '#544b58', '#7a1a10'], 141, 18);
   return tiles;
 }
 
@@ -868,6 +899,202 @@ export function buildProps() {
       px(2, 16, 4, 2, '#0c0d12'); px(20, 16, 4, 2, '#0c0d12');
     }),
     solid: { x: 2, y: 6, w: 22, h: 11 }, jumpable: true, hide: true, tall: false,
+  };
+
+  /* ---- Neighborhood ---- */
+  // Suburban house. `windows` (relative rects) are read by the map so the
+  // stealth system can light them up when the neighbours get suspicious.
+  const house = (rD, rM, rH, w0, w1, w2, door) => ({
+    img: propCanvas(64, 54, (px, ctx, box) => {
+      // pitched roof
+      box(2, 2, 60, 19, rM);
+      px(3, 3, 58, 2, rH);                 // ridge highlight
+      px(3, 18, 58, 2, rD);                // eave shadow
+      for (const y of [7, 11, 15]) px(3, y, 58, 1, rD);   // shingle rows
+      px(27, 0, 10, 3, rD);                // gable cap
+      box(48, 0, 8, 9, C.br1); px(49, 0, 6, 2, C.br2);    // chimney
+      // wall
+      box(4, 20, 56, 32, w1);
+      px(5, 21, 54, 2, w2);                // top-lit
+      px(5, 49, 54, 2, w0);                // base shadow
+      // front door + step
+      box(28, 35, 10, 17, door);
+      px(29, 36, 8, 1, C.wd4); px(35, 44, 1, 2, C.gd2);   // panel + knob
+      px(26, 51, 14, 2, C.mt3);            // concrete stoop
+      // windows (with muntins)
+      for (const wx of [9, 41]) {
+        box(wx, 26, 14, 11, C.mt1);
+        px(wx + 1, 27, 12, 9, C.gl1); px(wx + 1, 27, 12, 3, C.gl2);
+        px(wx + 6, 27, 1, 9, C.mt1); px(wx + 1, 31, 12, 1, C.mt1);
+      }
+    }),
+    solid: { x: 3, y: 24, w: 58, h: 28 }, jumpable: false, hide: false, tall: true,
+    windows: [{ x: 10, y: 27, w: 12, h: 9 }, { x: 42, y: 27, w: 12, h: 9 }],
+  });
+  p.houseCream = house('#7a4a3a', '#a8604a', '#c47a60', C.wl0, C.wl1, C.wl2, C.wd1);
+  p.houseTan   = house('#3a5a78', '#4a7098', '#6a90b8', C.wt0, C.wt1, C.wt2, C.wd0);
+  p.houseBrick = house('#4a4652', '#666074', '#847e94', C.br0, C.br1, C.br2, '#2a2530');
+
+  const car = (body, bodyHi, bodyLo) => ({
+    img: propCanvas(34, 18, (px, ctx, box) => {
+      // wheels poking out
+      px(3, 0, 6, 2, '#0c0d12'); px(3, 16, 6, 2, '#0c0d12');
+      px(24, 0, 6, 2, '#0c0d12'); px(24, 16, 6, 2, '#0c0d12');
+      box(1, 2, 32, 14, body);
+      px(2, 3, 30, 2, bodyHi);             // roof top-light
+      px(2, 13, 30, 2, bodyLo);            // sill shadow
+      px(4, 4, 25, 3, C.gl1); px(4, 4, 25, 1, C.gl2);     // windshield (front=right)
+      px(4, 10, 25, 3, C.gl0);             // rear glass
+      px(3, 7, 28, 3, body);               // roof band
+      px(31, 4, 2, 3, C.gd3); px(31, 11, 2, 3, C.rd2);    // head/tail lights
+    }),
+    solid: { x: 1, y: 2, w: 32, h: 14 }, jumpable: false, hide: true, tall: false,
+  });
+  p.carRed  = car(C.rd1, C.rd3, C.rd0);
+  p.carBlue = car(C.bl1, C.bl3, C.bl0);
+  p.carWhite = car('#c8cdd6', '#eef1f7', '#969ca8');
+
+  p.mailbox = {
+    img: propCanvas(10, 16, (px, ctx, box) => {
+      px(4, 8, 2, 8, C.wd1); px(4, 8, 1, 8, C.wd3);       // post
+      box(1, 3, 8, 6, C.mt2); px(2, 4, 6, 1, C.mt4);      // box
+      px(2, 6, 5, 1, C.mt1);
+      px(8, 4, 1, 3, C.rd2);                              // flag up
+    }),
+    solid: { x: 3, y: 9, w: 4, h: 6 }, jumpable: false, hide: false, tall: true,
+  };
+
+  p.trashcan = {
+    img: propCanvas(12, 15, (px, ctx, box) => {
+      px(1, 2, 10, 2, C.mt3); px(2, 1, 8, 1, C.mt4);      // lid
+      box(2, 4, 8, 10, C.mt2);
+      px(3, 5, 6, 1, C.mt4);
+      px(3, 7, 6, 1, C.mt1); px(3, 10, 6, 1, C.mt1);      // ridges
+    }),
+    solid: { x: 2, y: 4, w: 8, h: 10 }, jumpable: false, hide: true, tall: false,
+  };
+
+  p.hedge = {
+    img: propCanvas(30, 16, (px, ctx, box) => {
+      box(0, 2, 30, 13, C.lf2);
+      // bumpy top-lit crown
+      for (let x = 1; x < 29; x += 4) px(x, 2, 3, 2, C.lf3);
+      px(1, 13, 28, 2, C.lf1);             // base shade
+      // leaf speckle
+      px(5, 6, 2, 1, C.lf4); px(12, 9, 2, 1, C.lf1); px(18, 5, 2, 1, C.lf4);
+      px(23, 10, 2, 1, C.lf1); px(9, 11, 2, 1, C.lf1); px(25, 6, 2, 1, C.lf4);
+    }),
+    solid: { x: 1, y: 4, w: 28, h: 10 }, jumpable: true, hide: true, tall: false,
+  };
+
+  /* ---- Tropical island ---- */
+  p.volcano = {
+    img: propCanvas(120, 96, (px, ctx, box) => {
+      // rock cone: rows widen toward the base, lit from the left
+      const top = 8, bot = 90, cx = 60;
+      for (let y = top; y <= bot; y++) {
+        const f = (y - top) / (bot - top);
+        const half = Math.round(13 + 44 * f);
+        const x0 = cx - half, x1 = cx + half;
+        px(x0, y, x1 - x0 + 1, 1, C.vrk2);
+        px(x0, y, Math.round(half * 0.7), 1, C.vrk3);          // left-lit slope
+        px(cx + Math.round(half * 0.35), y, x1 - (cx + Math.round(half * 0.35)) + 1, 1, C.vrk1); // shade
+        px(x0, y, 1, 1, C.ink); px(x1, y, 1, 1, C.ink);        // side outline
+      }
+      px(47, 7, 26, 1, C.ink);             // crater rim outline
+      // crater + glowing lava
+      px(46, 6, 28, 5, C.vrk1); px(48, 5, 24, 2, C.vrk3);
+      px(50, 8, 20, 4, C.lav1); px(52, 8, 16, 3, C.lav2); px(54, 9, 12, 2, C.lav3);
+      // lava spilling down the right flank
+      px(60, 11, 3, 12, C.lav1); px(61, 11, 1, 18, C.lav2); px(62, 20, 2, 12, C.lav1);
+      px(58, 26, 2, 10, C.lav0);
+      // cracks + rubble texture
+      px(38, 40, 2, 14, C.vrk0); px(78, 46, 2, 16, C.vrk0);
+      px(30, 70, 4, 1, C.vrk3); px(88, 74, 4, 1, C.vrk3);
+      // vegetated green skirt along the base
+      for (let x = 8; x < 112; x += 9) {
+        const yb = 84 + ((x * 7) % 4);
+        px(x, yb, 6, 4, C.jg2); px(x + 1, yb, 3, 2, C.jg3);
+      }
+      px(6, 89, 108, 2, C.jg1);
+    }),
+    solid: { x: 26, y: 62, w: 68, h: 26 }, jumpable: false, hide: false, tall: true,
+    crater: { x: 60, y: 8 },
+  };
+
+  p.palm = {
+    img: propCanvas(28, 42, (px, ctx, box) => {
+      // trunk (leans slightly), with segment notches
+      px(12, 16, 3, 22, C.wd2); px(12, 16, 1, 22, C.wd3); px(14, 16, 1, 22, C.wd1);
+      for (const y of [22, 27, 32]) px(12, y, 3, 1, C.wd0);
+      px(10, 38, 8, 3, C.wd0);             // root flare
+      // frond crown radiating from (13,10)
+      px(3, 12, 8, 2, C.jg1); px(1, 14, 6, 2, C.jg1);      // left droops
+      px(17, 12, 8, 2, C.jg1); px(21, 14, 6, 2, C.jg1);    // right droops
+      px(5, 8, 7, 3, C.jg2); px(16, 8, 7, 3, C.jg2);       // mid fronds
+      px(9, 3, 4, 6, C.jg3); px(15, 3, 4, 6, C.jg3);       // upright fronds
+      px(11, 1, 6, 3, C.jg3); px(12, 0, 4, 2, C.jg4);      // top tuft
+      px(12, 2, 1, 5, C.jg4); px(6, 9, 1, 3, C.jg4);       // highlights
+      // coconuts
+      px(12, 11, 2, 2, C.wd2); px(15, 11, 2, 2, C.wd1);
+    }),
+    solid: { x: 12, y: 32, w: 5, h: 8 }, jumpable: false, hide: true, tall: true,
+  };
+
+  p.fern = {
+    img: propCanvas(26, 18, (px) => {
+      px(6, 12, 14, 5, C.jg1);             // base clump
+      px(2, 10, 4, 5, C.jg2); px(20, 10, 4, 5, C.jg2);     // outer fronds
+      px(5, 6, 4, 7, C.jg2); px(17, 6, 4, 7, C.jg2);
+      px(9, 3, 3, 10, C.jg3); px(14, 3, 3, 10, C.jg3);     // upright fronds
+      px(11, 2, 4, 11, C.jg3);
+      px(12, 3, 1, 8, C.jg4); px(6, 7, 1, 4, C.jg4); px(19, 7, 1, 4, C.jg4);
+    }),
+    solid: { x: 2, y: 8, w: 22, h: 8 }, jumpable: true, hide: true, tall: false,
+  };
+
+  p.hut = {
+    img: propCanvas(46, 42, (px, ctx, box) => {
+      // thatched roof (stacked straw layers)
+      px(12, 2, 22, 5, C.gd1); px(6, 6, 34, 5, C.gd1); px(2, 10, 42, 6, C.gd1);
+      px(12, 2, 22, 2, C.gd2); px(6, 6, 34, 1, C.gd2); px(2, 10, 42, 1, C.gd2);
+      px(2, 14, 42, 2, C.gd0);             // eave shadow
+      for (let x = 4; x < 42; x += 3) px(x, 11, 1, 4, C.gd0);   // straw strands
+      px(22, 0, 2, 3, C.gd0);              // ridge tuft
+      // bamboo walls
+      box(6, 16, 34, 24, C.wd2);
+      px(7, 17, 32, 2, C.wd3);
+      for (let x = 8; x < 39; x += 3) px(x, 18, 1, 21, C.wd1);
+      px(7, 37, 32, 2, C.wd0);
+      // dark doorway + window
+      box(18, 26, 11, 14, '#160f08');
+      box(9, 22, 6, 6, '#160f08'); px(10, 23, 4, 2, C.gd1);
+    }),
+    solid: { x: 5, y: 20, w: 36, h: 18 }, jumpable: false, hide: true, tall: true,
+  };
+
+  p.tikitorch = {
+    img: propCanvas(10, 28, (px, ctx, box) => {
+      px(4, 10, 3, 17, C.wd2); px(4, 10, 1, 17, C.wd3);    // pole
+      box(2, 10, 6, 8, C.wd1);                             // carved tiki head
+      px(3, 12, 1, 1, C.ink); px(6, 12, 1, 1, C.ink);      // eyes
+      px(3, 15, 4, 1, C.ink);                              // mouth
+      px(3, 6, 4, 4, C.mt1);                               // fuel bowl
+      px(4, 2, 3, 5, C.lav2); px(4, 1, 2, 4, C.lav3); px(5, 0, 1, 2, C.gd3); // flame
+    }),
+    solid: { x: 4, y: 22, w: 3, h: 5 }, jumpable: false, hide: false, tall: true,
+  };
+
+  p.log = {
+    img: propCanvas(30, 14, (px, ctx, box) => {
+      box(1, 3, 28, 9, C.wd2);
+      px(2, 4, 26, 2, C.wd3);              // top-lit
+      px(2, 9, 26, 2, C.wd1);              // shade
+      box(23, 3, 6, 9, C.wd1);             // sawn end
+      px(24, 5, 4, 5, C.wd3); px(25, 6, 2, 3, C.wd2);      // rings
+      px(4, 6, 18, 1, C.wd1); px(6, 8, 14, 1, C.wd1);      // bark grain
+    }),
+    solid: { x: 2, y: 4, w: 26, h: 7 }, jumpable: true, hide: true, tall: false,
   };
 
   return p;

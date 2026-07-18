@@ -13,45 +13,65 @@ export const MISSIONS = [
     aliens: { grunt: 3, scout: 1 }, time: 160, pay: 180, escapeCost: 40,
   },
   {
-    id: 2, map: 'farmhouse', name: 'Crop Circles',
+    id: 2, map: 'neighborhood', name: 'Suburban Stakeout',
+    desc: 'Aliens on Maple Street at 3am. Keep it quiet — sprinting near a house wakes the block. Watch the NOISE meter.',
+    aliens: { grunt: 3 }, time: 170, pay: 260, escapeCost: 45,
+  },
+  {
+    id: 3, map: 'farmhouse', name: 'Crop Circles',
     desc: 'They landed in the corn. The corn is a problem.',
-    aliens: { grunt: 3, scout: 1 }, time: 160, pay: 240, escapeCost: 50,
+    aliens: { grunt: 3, scout: 1 }, time: 160, pay: 260, escapeCost: 50,
   },
   {
-    id: 3, map: 'farmhouse', name: 'Barnstormers',
+    id: 4, map: 'farmhouse', name: 'Barnstormers',
     desc: 'Scouts everywhere and a Trooper with a stun pistol. Stay mobile.',
-    aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 320, escapeCost: 55,
+    aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 340, escapeCost: 55,
   },
   {
-    id: 4, map: 'shipyard', name: 'Dock Rats',
+    id: 5, map: 'neighborhood', name: 'Quiet Hours',
+    desc: 'More of them, and a Trooper — but the neighbours are lighter sleepers. Sneak, do not sprint.',
+    aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 155, pay: 460, escapeCost: 60,
+  },
+  {
+    id: 6, map: 'shipyard', name: 'Dock Rats',
     desc: 'The container maze is crawling. Check the open containers.',
-    aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 400, escapeCost: 65,
+    aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 420, escapeCost: 65,
   },
   {
-    id: 5, map: 'shipyard', name: 'Armored Cargo',
+    id: 7, map: 'tropical', name: 'Island Getaway',
+    desc: 'They crashed on a jungle island. Lush cover everywhere — mind the volcano.',
+    aliens: { scout: 2, trooper: 1 }, time: 155, pay: 500, escapeCost: 65,
+  },
+  {
+    id: 8, map: 'shipyard', name: 'Armored Cargo',
     desc: 'Troopers in force. Their armor shrugs off your first grab.',
-    aliens: { scout: 2, trooper: 3 }, time: 145, pay: 500, escapeCost: 75,
+    aliens: { scout: 2, trooper: 3 }, time: 145, pay: 580, escapeCost: 75,
   },
   {
-    id: 6, map: 'playground', name: 'Night Shift',
+    id: 9, map: 'tropical', name: 'Volcano Rising',
+    desc: 'Elites hiding in the ferns while the volcano rumbles. Bring the goggles.',
+    aliens: { grunt: 1, scout: 2, trooper: 2, elite: 1 }, time: 145, pay: 720, escapeCost: 90,
+  },
+  {
+    id: 10, map: 'playground', name: 'Night Shift',
     desc: 'An Elite is on-site: it cloaks. Goggles strongly advised.',
-    aliens: { scout: 2, trooper: 2, elite: 1 }, time: 140, pay: 620, escapeCost: 90,
+    aliens: { scout: 2, trooper: 2, elite: 1 }, time: 140, pay: 700, escapeCost: 90,
   },
   {
-    id: 7, map: 'farmhouse', name: 'The Harvest',
+    id: 11, map: 'farmhouse', name: 'The Harvest',
     desc: 'Elites in the corn. This is what they pay you for.',
-    aliens: { grunt: 1, scout: 2, trooper: 2, elite: 2 }, time: 140, pay: 780, escapeCost: 100,
+    aliens: { grunt: 1, scout: 2, trooper: 2, elite: 2 }, time: 140, pay: 840, escapeCost: 100,
   },
   {
-    id: 8, map: 'shipyard', name: 'Full Invasion',
+    id: 12, map: 'shipyard', name: 'Full Invasion',
     desc: 'Everything at once. Bring everything you own.',
-    aliens: { scout: 3, trooper: 3, elite: 2 }, time: 135, pay: 1000, escapeCost: 110,
+    aliens: { scout: 3, trooper: 3, elite: 2 }, time: 135, pay: 1050, escapeCost: 110,
   },
 ];
 
 // Endless "overtime" missions after the ladder
 export function overtimeMission(n) {
-  const maps = ['playground', 'farmhouse', 'shipyard'];
+  const maps = ['playground', 'farmhouse', 'shipyard', 'neighborhood', 'tropical'];
   const k = n - MISSIONS.length;
   return {
     id: n, map: maps[k % 3], name: `Overtime Shift ${k + 1}`,

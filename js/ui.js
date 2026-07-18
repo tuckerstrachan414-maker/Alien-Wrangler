@@ -6,6 +6,8 @@ const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
   farmhouse: 'Hollow Creek Farm',
   shipyard: 'Rust Harbor Shipyard',
+  neighborhood: 'Maple Street (Stealth)',
+  tropical: 'Isla Verde',
 };
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
@@ -174,10 +176,13 @@ export class UI {
 
     const line = (label, val, cls = '') =>
       s.appendChild(this.el('div', 'result-line', `<span>${label}</span><b class="${cls}">${val}</b>`));
+    const escDed = r.escaped * r.mission.escapeCost;
+    const fineDed = (r.fines || 0) * r.mission.escapeCost;
     line('Aliens captured', `${r.captured}/${r.total}`, r.captured ? 'pos' : '');
     line('Aliens escaped', `${r.escaped}`, r.escaped ? 'neg' : '');
     line('Base pay', `$${r.basePay}`);
-    line('Escape deductions', `-$${r.deduction}`, r.deduction ? 'neg' : '');
+    line('Escape deductions', `-$${escDed}`, escDed ? 'neg' : '');
+    if (r.fines) line('Noise fines', `${r.fines} &times; -$${r.mission.escapeCost}`, 'neg');
     const total = this.el('div', 'result-line result-total', `<span>PAYOUT</span><b class="pos">$${r.pay}</b>`);
     s.appendChild(total);
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));

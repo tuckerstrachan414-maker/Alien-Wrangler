@@ -57,8 +57,14 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 - **Sunny Pines Playground** — slides, swings, sandbox, bushes everywhere.
 - **Hollow Creek Farm** — the cornfield is basically alien heaven. Barn, silo, hay bales, animal pen.
 - **Rust Harbor Shipyard** — a container maze with open containers to hide inside, cranes, and a dock.
+- **Maple Street** *(stealth)* — a sleeping suburb at 3am. Catch the aliens **without waking the
+  neighbours**: sprinting, dashing, diving and getting stunned make noise, and it's much louder right
+  next to a house. Fill the **NOISE** meter and the block wakes up — the aliens scatter and you get
+  fined. Sneak on the lawns, use the hedges and parked cars for cover, save the loud moves for the road.
+- **Isla Verde** — a lush jungle island with a smoking **volcano** in the middle. Palms, ferns, tiki
+  torches and huts everywhere for the aliens to duck behind; ocean on all sides.
 
-9 missions, then endless **Overtime Shifts** that keep scaling up.
+13 missions across the five maps, then endless **Overtime Shifts** (rotating every map) that keep scaling up.
 
 ## 🧰 Equipment shop
 

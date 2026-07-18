@@ -159,8 +159,7 @@ function updateHud() {
   timerText.textContent = game.beamPhase ? '0:00' : fmtTime(game.timer);
   hudTimer.classList.toggle('urgent', game.timer < 30 || game.beamPhase);
   scoreText.textContent = `${game.captured}/${game.totalAliens}`;
-  const projected = Math.max(0, game.mission.pay - game.escaped * game.mission.escapeCost);
-  cashText.textContent = `${projected}`;
+  cashText.textContent = `${game.projectedPay()}`;
   warnEl.classList.toggle('hidden', !(game.timer <= 30 && game.timer > 26.5 && game.phase === 'play'));
   const p = game.player;
   const pct = Math.round(p.stamina / p.fx.staminaMax * 100);

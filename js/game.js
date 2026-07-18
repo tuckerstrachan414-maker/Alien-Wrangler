@@ -54,6 +54,15 @@ export class Game {
     this.running = true;
     this.time = 0;
 
+    // stealth (neighbourhood) + ambient state
+    this.stealth = !!this.map.stealth;
+    this.suspicion = 0;
+    this.fines = 0;
+    this.rings = [];
+    this.homes = this.map.homes || [];
+    for (const h of this.homes) h.alertT = 0;
+    this.volcanoT = 0;
+
     this.vanDoor = { x: this.map.van.x + 50, y: this.map.van.y + 15 };
     this.announce(mission.name.toUpperCase(), 2.2);
   }
@@ -122,6 +131,7 @@ export class Game {
     const dropped = this.player.stun(dur, kx, ky);
     sfx.stun();
     this.shake = 5;
+    if (this.stealth) this.noisePulse(this.player.x, this.player.y, 24);
     this.popup(this.player.x, this.player.y - 20, 'STUNNED', '#ff5e6c');
     for (const al of dropped) {
       al.state = 'running';
@@ -202,14 +212,20 @@ export class Game {
 
     // actions
     if (consumePress('jump')) { if (p.tryJump()) sfx.jump(); }
-    if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); } }
+    if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); if (this.stealth) this.noisePulse(p.x, p.y, 18); } }
     if (consumePress('dive')) { if (p.tryDive()) sfx.dive(); }
     if (consumePress('grab')) this.grabAttempt();
     if (consumePress('net')) this.fireNet();
 
     const wasDiving = p.state === 'diving';
     p.update(dt, this.map, input);
-    if (wasDiving && p.state === 'prone') { sfx.thud(); this.puff(p.x, p.y, '#8a6a45'); }
+    if (wasDiving && p.state === 'prone') {
+      sfx.thud(); this.puff(p.x, p.y, '#8a6a45');
+      if (this.stealth) this.noisePulse(p.x, p.y, 26);
+    }
+
+    if (this.stealth) this.updateStealth(dt);
+    if (this.map.volcano) this.updateVolcano(dt);
 
     // dive capture sweep
     if (p.state === 'diving') {
@@ -287,9 +303,11 @@ export class Game {
     // particles + popups
     for (const pt of this.particles) {
       pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.t -= dt;
-      pt.vy += 20 * dt;
+      pt.vy += (pt.grav ?? 20) * dt;
     }
     this.particles = this.particles.filter(pt => pt.t > 0);
+    for (const r of this.rings) { r.r += r.spd * dt; r.t -= dt; }
+    this.rings = this.rings.filter(r => r.t > 0);
     for (const pp of this.popups) { pp.y -= 14 * dt; pp.t -= dt; }
     this.popups = this.popups.filter(pp => pp.t > 0);
     this.msgT -= dt;
@@ -376,17 +394,79 @@ export class Game {
     });
   }
 
+  /* ---------------- stealth (neighbourhood) ---------------- */
+
+  // How loud you are here: 1x out in the open, ~3x on a doorstep.
+  noiseGain(x, y) {
+    let near = 1e9;
+    for (const h of this.homes) near = Math.min(near, Math.hypot(h.x - x, h.y - y));
+    return 1 + Math.max(0, (260 - near) / 260) * 2;
+  }
+
+  updateStealth(dt) {
+    const p = this.player;
+    if (this.phase === 'play' || this.phase === 'beam') {
+      if (p.sprinting && p.moving && p.z === 0) {
+        this.suspicion += this.noiseGain(p.x, p.y) * 9 * dt;   // sprinting is loud
+      } else {
+        this.suspicion -= 7 * dt;                              // quiet -> calm down
+      }
+    }
+    this.suspicion = Math.max(0, Math.min(100, this.suspicion));
+    for (const h of this.homes) h.alertT = Math.max(0, h.alertT - dt);
+    if (this.suspicion >= 100) this.noiseComplaint();
+  }
+
+  noisePulse(x, y, amount) {
+    const g = this.noiseGain(x, y);
+    this.suspicion = Math.min(100, this.suspicion + amount * g * 0.5);
+    this.rings.push({ x, y, r: 4, spd: 90, t: 0.6, life: 0.6 });
+    const reach = amount * 5;
+    for (const h of this.homes) if (Math.hypot(h.x - x, h.y - y) < reach) h.alertT = 1.1;
+    if (this.suspicion >= 100) this.noiseComplaint();
+  }
+
+  noiseComplaint() {
+    this.suspicion = 45;
+    this.fines++;
+    this.shake = 6;
+    sfx.alert();
+    this.announce(`NEIGHBORS WOKE UP!  -$${this.mission.escapeCost}`, 2.4);
+    for (const h of this.homes) h.alertT = 1.8;
+    for (const a of this.aliens) a.flush(this);   // everyone scatters
+  }
+
+  updateVolcano(dt) {
+    this.volcanoT += dt;
+    if (this.volcanoT < 0.22) return;
+    this.volcanoT = 0;
+    const v = this.map.volcano;
+    this.particles.push({
+      x: v.x + (Math.random() - 0.5) * 10, y: v.y - 4,
+      vx: (Math.random() - 0.5) * 8, vy: -16 - Math.random() * 8,
+      grav: -5, life: 2.2, t: 2.2,
+      color: Math.random() < 0.3 ? '#8a8078' : '#b8b0a8', size: 2,
+    });
+  }
+
+  // pay = base minus escaped aliens and noise fines (both cost escapeCost)
+  projectedPay() {
+    const m = this.mission;
+    return Math.max(0, m.pay - (this.escaped + this.fines) * m.escapeCost);
+  }
+
   finish() {
     if (!this.running) return;
     this.running = false;
     const m = this.mission;
-    const deduction = this.escaped * m.escapeCost;
-    const pay = Math.max(0, m.pay - deduction);
+    const deduction = (this.escaped + this.fines) * m.escapeCost;
+    const pay = this.projectedPay();
     const cleared = this.captured > 0;
     if (cleared) sfx.win(); else sfx.fail();
     const results = {
       mission: m, captured: this.captured, escaped: this.escaped,
       total: this.totalAliens, basePay: m.pay, deduction, pay, cleared,
+      fines: this.fines,
     };
     if (this.onEnd) this.onEnd(results);
   }
@@ -408,6 +488,12 @@ export class Game {
     ctx.fillStyle = '#0a0c14';
     ctx.fillRect(0, 0, vw, vh);
     ctx.drawImage(this.groundCv, -camX, -camY);
+
+    // night tint (neighbourhood): dark blue wash over the ground
+    if (map.tint === 'night') {
+      ctx.fillStyle = 'rgba(14, 20, 54, 0.44)';
+      ctx.fillRect(0, 0, vw, vh);
+    }
 
     // hide-spot shimmer for goggles
     const fx = this.fx;
@@ -458,6 +544,27 @@ export class Game {
         ctx.fillStyle = '#41f0d8';
         ctx.fillRect(Math.round(a.x - 1 - camX), Math.round(a.y - 22 + by - camY), 3, 3);
         ctx.fillRect(Math.round(a.x - camX), Math.round(a.y - 19 + by - camY), 1, 2);
+      }
+    }
+
+    // stealth: lit windows on woken homes + expanding noise rings
+    if (this.stealth) {
+      for (const h of this.homes) {
+        if (h.alertT <= 0) continue;
+        const a = Math.min(1, h.alertT) * (0.5 + 0.3 * Math.sin(this.time * 20));
+        ctx.globalAlpha = Math.max(0, a);
+        ctx.fillStyle = '#ffe58a';
+        ctx.fillRect(Math.round(h.x - camX), Math.round(h.y - camY), h.w, h.h);
+        ctx.globalAlpha = 1;
+      }
+      for (const r of this.rings) {
+        ctx.globalAlpha = Math.max(0, r.t / r.life) * 0.6;
+        ctx.strokeStyle = '#ffd75e';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.ellipse(r.x - camX, r.y - camY, r.r, r.r * 0.55, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -520,7 +627,34 @@ export class Game {
       ctx.fillText(this.msg, vw / 2 | 0, 30);
       ctx.globalAlpha = 1;
     }
+
+    // stealth suspicion meter (screen space, top-centre)
+    if (this.stealth) this.drawSuspicion(ctx, vw);
+
     ctx.textAlign = 'left';
+  }
+
+  drawSuspicion(ctx, vw) {
+    const s = this.suspicion / 100;
+    const bw = 70, bh = 6, bx = (vw / 2 - bw / 2) | 0, by = 46;
+    const col = s > 0.8 ? '#ff5e6c' : s > 0.5 ? '#ffd75e' : '#59d98c';
+    // frame
+    ctx.fillStyle = '#0d0f1a'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+    ctx.fillStyle = '#2a3350'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+    ctx.fillStyle = '#11141f'; ctx.fillRect(bx, by, bw, bh);
+    // fill (pulses red when near max)
+    ctx.globalAlpha = s > 0.8 ? 0.7 + 0.3 * Math.sin(this.time * 16) : 1;
+    ctx.fillStyle = col; ctx.fillRect(bx, by, Math.round(bw * s), bh);
+    ctx.globalAlpha = 1;
+    // threshold ticks
+    ctx.fillStyle = '#0d0f1a';
+    ctx.fillRect(bx + (bw * 0.5 | 0), by, 1, bh);
+    ctx.fillRect(bx + (bw * 0.8 | 0), by, 1, bh);
+    // label
+    ctx.font = 'bold 6px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#0a0c14'; ctx.fillText('NOISE', (vw / 2 | 0) + 1, by - 2);
+    ctx.fillStyle = col; ctx.fillText('NOISE', vw / 2 | 0, by - 3);
   }
 
   shadow(ctx, x, y, w) {

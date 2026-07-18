@@ -14,6 +14,10 @@ class MapBuilder {
     this.props = [];
     this.solids = [];
     this.hideSpots = [];
+    this.homes = [];        // window glow points for the stealth system
+    this.stealth = false;   // neighbourhood: keep-quiet suspicion mechanic
+    this.tint = null;       // e.g. 'night' -> dark overlay
+    this.volcano = null;    // {x,y} crater -> ambient smoke
     this.van = { x: 60, y: 60 };
     this.spawn = { x: 80, y: 80 };
     // world border walls
@@ -58,6 +62,16 @@ class MapBuilder {
       const cx = x + def.img.width / 2;
       const cy = def.solid ? y + def.solid.y + def.solid.h / 2 : y + def.img.height / 2;
       this.hideSpots.push({ x: cx, y: cy, inside: !def.solid || def.jumpable });
+    }
+    return this;
+  }
+
+  // Place a house and register its lit windows as stealth "homes".
+  house(key, x, y) {
+    this.prop(key, x, y);
+    const def = PROPS[key];
+    for (const w of def.windows || []) {
+      this.homes.push({ x: x + w.x, y: y + w.y, w: w.w, h: w.h, alertT: 0 });
     }
     return this;
   }
@@ -231,8 +245,122 @@ export function buildShipyard() {
   return m.done();
 }
 
+/* ------------------------- NEIGHBORHOOD ------------------------- */
+// Stealth map: catch the aliens without waking the neighbours. Loud moves
+// (sprint/dash/dive) near a house raise Suspicion; max it out and the block
+// wakes up — the aliens scatter and you get fined.
+export function buildNeighborhood() {
+  const m = new MapBuilder('Maple Street', 40, 34, T.GRASS);
+  m.variety(T.GRASS, T.GRASS2, 0.3, 41);
+  m.stealth = true;
+  m.tint = 'night';
+
+  // road grid (cross of asphalt) with concrete sidewalks
+  m.fill(T.CONCRETE, 0, 13, 40, 8);       // horizontal corridor
+  m.fill(T.ASPHALT, 0, 15, 40, 4);        // horizontal road
+  m.fill(T.CONCRETE, 15, 0, 8, 34);       // vertical corridor
+  m.fill(T.ASPHALT, 17, 0, 4, 34);        // vertical road
+
+  // driveways (concrete) from each house down/up to the road
+  for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 12, 3, 2);
+  for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 20, 3, 2);
+
+  // top row of houses (facing down toward the road)
+  const topHouses = [['houseCream', 40], ['houseTan', 208], ['houseBrick', 380], ['houseCream', 540]];
+  for (const [key, x] of topHouses) {
+    m.house(key, x, 108);
+    m.prop('mailbox', x + 68, 176, { noSolid: false });
+  }
+  // bottom row of houses (facing up)
+  const botHouses = [['houseBrick', 40], ['houseCream', 208], ['houseTan', 380], ['houseBrick', 540]];
+  for (const [key, x] of botHouses) {
+    m.house(key, x, 300);
+    m.prop('mailbox', x - 6, 300, { noSolid: false });
+  }
+
+  // parked cars on driveways / curbs
+  m.prop('carRed', 96, 192); m.prop('carBlue', 250, 192);
+  m.prop('carWhite', 96, 268); m.prop('carRed', 420, 268); m.prop('carBlue', 560, 192);
+
+  // hedges dividing the yards (prime hiding, vaultable)
+  const hedges = [
+    [150, 130], [150, 170], [322, 130], [478, 150],
+    [150, 320], [322, 320], [322, 360], [478, 330],
+    [40, 200], [590, 300],
+  ];
+  for (const [x, y] of hedges) m.prop('hedge', x, y);
+
+  // trash cans + bushes tucked around
+  for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
+    m.prop('trashcan', x, y);
+  for (const [x, y] of [[120, 470], [360, 130], [220, 500], [520, 500], [80, 380]])
+    m.prop('bush', x, y);
+
+  // street trees + lamps along the sidewalks
+  for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
+    m.prop('tree', x, y);
+  for (const [x, y] of [[250, 216], [360, 216], [250, 296], [140, 216], [470, 296]])
+    m.prop('lamppost', x, y);
+
+  m.placeVan(240, 208);                    // agent's van idling on the road
+  m.spawn = { x: 300, y: 250 };
+  return m.done();
+}
+
+/* ------------------------- TROPICAL ISLAND ------------------------- */
+export function buildTropical() {
+  const m = new MapBuilder('Isla Verde', 44, 38, T.WATER);
+  // island: sand beach ring, lush jungle interior
+  m.fill(T.SAND, 3, 3, 38, 32);
+  m.fill(T.JUNGLE, 5, 5, 34, 28);
+  m.variety(T.JUNGLE, T.FLOWERS, 0.07, 17);   // occasional flower clusters
+  // keep the player out of the ocean
+  m.solids.push(
+    { x: 0, y: 0, w: m.w, h: 3 * TILE, jumpable: false },
+    { x: 0, y: m.h - 3 * TILE, w: m.w, h: 3 * TILE, jumpable: false },
+    { x: 0, y: 0, w: 3 * TILE, h: m.h, jumpable: false },
+    { x: m.w - 3 * TILE, y: 0, w: 3 * TILE, h: m.h, jumpable: false },
+  );
+
+  // volcano dead centre (its own vegetated base sits straight on the jungle)
+  const vx = m.w / 2 - 60, vy = m.h / 2 - 62;
+  m.prop('volcano', vx, vy);
+  // a few loose boulders + cooled-lava rubble around the foot
+  m.prop('rock', vx + 8, vy + 96); m.prop('rock', vx + 104, vy + 92);
+  const cr = PROPS.volcano.crater;
+  m.volcano = { x: vx + cr.x, y: vy + cr.y };
+
+  // palms ringing the beach + scattered inland
+  const palms = [
+    [70, 70], [180, 46], [300, 40], [470, 60], [600, 70], [640, 200],
+    [60, 240], [60, 400], [180, 500], [360, 520], [520, 510], [630, 400],
+    [430, 120], [250, 150], [150, 320], [560, 320],
+  ];
+  for (const [x, y] of palms) m.prop('palm', x, y);
+
+  // ferns (lush hiding) + huts + tiki torches + logs + rocks
+  const ferns = [
+    [120, 120], [230, 220], [420, 220], [520, 160], [140, 420],
+    [300, 300], [480, 400], [560, 440], [200, 380], [400, 480], [90, 180], [610, 300],
+  ];
+  for (const [x, y] of ferns) m.prop('fern', x, y);
+
+  m.prop('hut', 110, 180); m.prop('hut', 520, 240);
+  m.prop('tikitorch', 250, 260); m.prop('tikitorch', 420, 300);
+  m.prop('tikitorch', 160, 440); m.prop('tikitorch', 500, 180);
+  m.prop('log', 320, 420); m.prop('log', 200, 300); m.prop('log', 470, 460);
+  m.prop('rock', 380, 200); m.prop('rock', 260, 470); m.prop('rock', 540, 380);
+  m.prop('bush', 300, 250); m.prop('bush', 420, 350);
+
+  m.placeVan(90, 300);                     // beached van
+  m.spawn = { x: 160, y: 300 };
+  return m.done();
+}
+
 export const MAP_BUILDERS = {
   playground: buildPlayground,
   farmhouse: buildFarmhouse,
   shipyard: buildShipyard,
+  neighborhood: buildNeighborhood,
+  tropical: buildTropical,
 };
