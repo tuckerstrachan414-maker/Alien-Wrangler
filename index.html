@@ -8,6 +8,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0c14">
 <title>Alien Wrangler</title>
+<link rel="stylesheet" href="css/font.css">
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
@@ -17,13 +18,13 @@
   <div id="hud" class="hidden">
     <div id="hud-top">
       <div class="hud-pill" id="hud-timer">
-        <span class="ufo-ico">&#128760;</span><span id="timer-text">2:30</span>
+        <span class="hud-ico" id="ico-ufo"></span><span id="timer-text">2:30</span>
       </div>
       <div class="hud-pill" id="hud-score">
-        <span class="alien-ico">&#128126;</span><span id="score-text">0/5</span>
+        <span class="hud-ico" id="ico-alien"></span><span id="score-text">0/5</span>
       </div>
-      <div class="hud-pill" id="hud-cash"><span id="cash-text">$0</span></div>
-      <button class="hud-pill hud-btn" id="btn-pause">&#10074;&#10074;</button>
+      <div class="hud-pill" id="hud-cash"><span class="hud-ico" id="ico-coin"></span><span id="cash-text">0</span></div>
+      <button class="hud-pill hud-btn" id="btn-pause">| |</button>
     </div>
     <div id="hud-warning" class="hidden">UFO INBOUND</div>
     <div id="stamina-wrap"><div id="stamina-bar"></div></div>

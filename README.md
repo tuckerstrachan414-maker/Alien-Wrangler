@@ -19,7 +19,9 @@ The game deploys automatically with GitHub Actions, but Pages has to be switched
 3. Wait for the "Deploy to GitHub Pages" action to finish (Actions tab), then open the link above
 
 Tip: on iPhone, open the link in Safari and use **Share → Add to Home Screen** for
-fullscreen play with no browser bars.
+fullscreen play with no browser bars. Works in both **portrait and landscape** —
+rotate the phone and the controls and camera adapt (landscape shows a wider strip of
+the map at the same zoom).
 
 ## 🎮 Controls (iPhone)
 
@@ -78,8 +80,11 @@ Ideas on the table for the next batch — pick favorites:
 
 ## 🛠️ Dev notes
 
-Pure HTML5 canvas + ES modules. No build step, no dependencies, no external assets —
-every sprite is generated from pixel grids in `js/data/sprites.js` at boot.
+Pure HTML5 canvas + ES modules. No build step, no dependencies, no external network —
+every sprite is generated from pixel grids in `js/data/sprites.js` at boot, and the UI
+uses the **Press Start 2P** pixel font (OFL 1.1, base64-embedded in `css/font.css`;
+license in `fonts/OFL.txt`). The whole UI is styled with beveled, notched-corner pixel
+frames to match the game art, and adapts to portrait or landscape.
 
 ```
 index.html          shell + HUD + touch controls

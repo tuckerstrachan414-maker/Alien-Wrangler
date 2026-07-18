@@ -15,6 +15,41 @@ const assets = {
   ufo: buildUfo(),
 };
 
+// ---- HUD pixel icons (drawn in code, match the game art) ----
+function iconCanvas(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const x = c.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  draw((px, py, pw, ph, col) => { x.fillStyle = col; x.fillRect(px, py, pw, ph); });
+  c.className = 'pixel-canvas';
+  return c;
+}
+function buildHudIcons() {
+  const ufo = iconCanvas(14, 9, (p) => {
+    p(5, 0, 4, 1, '#bfeaff'); p(4, 1, 6, 1, '#8fd4f5');
+    p(2, 3, 10, 1, '#aab6c6'); p(0, 4, 14, 2, '#7d8a9c'); p(2, 6, 10, 1, '#5a6577');
+    p(2, 4, 1, 1, '#41f0d8'); p(5, 4, 1, 1, '#ffd75e'); p(8, 4, 1, 1, '#41f0d8'); p(11, 4, 1, 1, '#ffd75e');
+  });
+  const coin = iconCanvas(10, 10, (p) => {
+    p(3, 0, 4, 1, '#14141e'); p(2, 1, 6, 1, '#14141e');
+    p(1, 2, 8, 6, '#14141e'); p(2, 8, 6, 1, '#14141e'); p(3, 9, 4, 1, '#14141e');
+    p(3, 1, 4, 1, '#ffe790'); p(2, 2, 6, 6, '#ffd75e'); p(3, 8, 4, 1, '#e0b83c');
+    p(3, 3, 1, 4, '#c99a2c'); p(5, 2, 1, 6, '#fff2c0');
+  });
+  const alien = assets.actors.aliens.grunt.down;
+  document.getElementById('ico-ufo').appendChild(ufo);
+  document.getElementById('ico-coin').appendChild(coin);
+  document.getElementById('ico-alien').appendChild((() => {
+    const c = document.createElement('canvas');
+    c.width = alien.width; c.height = alien.height;
+    c.getContext('2d').drawImage(alien, 0, 0);
+    c.className = 'pixel-canvas';
+    return c;
+  })());
+}
+buildHudIcons();
+
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 const hud = document.getElementById('hud');
@@ -40,7 +75,10 @@ function resize() {
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   canvas.width = Math.round(window.innerWidth * dpr);
   canvas.height = Math.round(window.innerHeight * dpr);
-  scale = Math.max(2, Math.round(Math.min(canvas.width, canvas.height * 0.75) / 180));
+  // Zoom is based on the SHORT screen side so sprites are the same size in
+  // portrait and landscape — landscape just reveals a wider strip of world.
+  const shortSide = Math.min(canvas.width, canvas.height);
+  scale = Math.max(3, Math.min(9, Math.round(shortSide / 165)));
   viewW = Math.ceil(canvas.width / scale);
   viewH = Math.ceil(canvas.height / scale);
   buf.width = viewW; buf.height = viewH;
@@ -122,7 +160,7 @@ function updateHud() {
   hudTimer.classList.toggle('urgent', game.timer < 30 || game.beamPhase);
   scoreText.textContent = `${game.captured}/${game.totalAliens}`;
   const projected = Math.max(0, game.mission.pay - game.escaped * game.mission.escapeCost);
-  cashText.textContent = `$${projected}`;
+  cashText.textContent = `${projected}`;
   warnEl.classList.toggle('hidden', !(game.timer <= 30 && game.timer > 26.5 && game.phase === 'play'));
   const p = game.player;
   const pct = Math.round(p.stamina / p.fx.staminaMax * 100);
