@@ -156,8 +156,8 @@ html, body {
   position: absolute;
   right: calc(var(--safe-right) + 10px);
   bottom: calc(var(--safe-bottom) + 14px);
-  width: 168px;
-  height: 190px;
+  width: 180px;
+  height: 214px;
   pointer-events: none;
 }
 .act-btn {
@@ -174,11 +174,19 @@ html, body {
 }
 .act-btn:active, .act-btn.pressed { background: rgba(110, 194, 255, 0.55); }
 .act-btn.cooling { opacity: 0.35; }
-#btn-grab { width: 84px; height: 84px; right: 0; bottom: 44px; font-size: 15px; border-color: rgba(89, 217, 140, 0.8); }
-#btn-dive { width: 62px; height: 62px; right: 92px; bottom: 8px;  font-size: 12px; }
-#btn-dash { width: 62px; height: 62px; right: 96px; bottom: 82px; font-size: 12px; }
-#btn-jump { width: 56px; height: 56px; right: 8px; bottom: 134px; font-size: 12px; }
-#btn-net  { width: 56px; height: 56px; right: 108px; bottom: 152px; font-size: 12px; border-color: rgba(255, 215, 94, 0.8); }
+/* toggle button lit state (SPRINT engaged) */
+.act-btn.toggle.active {
+  background: rgba(255, 215, 94, 0.55);
+  border-color: var(--cash);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(255, 215, 94, 0.5);
+}
+#btn-grab   { width: 84px; height: 84px; right: 0;   bottom: 44px;  font-size: 15px; border-color: rgba(89, 217, 140, 0.8); }
+#btn-dive   { width: 58px; height: 58px; right: 90px; bottom: 8px;  font-size: 12px; }
+#btn-dash   { width: 58px; height: 58px; right: 96px; bottom: 76px; font-size: 12px; }
+#btn-jump   { width: 54px; height: 54px; right: 8px;  bottom: 132px; font-size: 12px; }
+#btn-sprint { width: 60px; height: 60px; right: 86px; bottom: 146px; font-size: 10px; border-color: rgba(255, 215, 94, 0.7); }
+#btn-net    { width: 52px; height: 52px; right: 150px; bottom: 10px; font-size: 12px; border-color: rgba(255, 215, 94, 0.8); }
 
 /* ---------- Menu screens ---------- */
 #ui-root { position: absolute; inset: 0; z-index: 30; pointer-events: none; }

@@ -25,10 +25,10 @@ fullscreen play with no browser bars.
 
 | Zone | Control |
 |---|---|
-| Left thumb | Floating joystick — push to the **edge to SPRINT** (drains stamina) |
-| Right thumb | **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) |
+| Left thumb | Floating joystick to move |
+| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) |
 
-Desktop testing: WASD/arrows + Shift sprint, J grab, L dive, K dash, Space jump, N net, P pause.
+Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, N net, P pause.
 
 ## 🛸 How a mission works
 

@@ -68,7 +68,7 @@ export class UI {
       save.muted = !save.muted; persist(); this.showTitle();
     }));
     s.appendChild(this.el('div', 'tip',
-      'Left thumb: move (push to the edge to SPRINT).<br>' +
+      'Left thumb: move. Tap SPRINT to toggle running (drains stamina).<br>' +
       'Right thumb: GRAB up close &middot; DIVE for distance &middot; DASH to close gaps &middot; JUMP fences.<br>' +
       'Haul aliens back to the van before the UFO beams them out.'));
     const reset = this.btn('RESET SAVE', 'danger', () => {

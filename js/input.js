@@ -4,12 +4,13 @@
 import { initAudio, resumeAudio } from './audio.js';
 
 const JOY_RADIUS = 40;
-const SPRINT_MAG = 0.92;
 
 export const input = {
   move: { x: 0, y: 0 },
   mag: 0,
-  sprint: false,
+  sprintHeld: false,     // keyboard Shift (hold-to-sprint)
+  sprintToggle: false,   // on-screen SPRINT button (toggle)
+  get sprint() { return this.sprintToggle || this.sprintHeld; },
   presses: {},           // edge-triggered action flags
 };
 
@@ -18,9 +19,18 @@ export function consumePress(name) {
   return false;
 }
 
+export function updateSprintVisual() {
+  const btn = document.getElementById('btn-sprint');
+  if (btn) btn.classList.toggle('active', input.sprintToggle);
+  const base = document.getElementById('joy-base');
+  if (base) base.classList.toggle('sprinting', input.sprint);
+}
+
 export function clearInput() {
-  input.move.x = 0; input.move.y = 0; input.mag = 0; input.sprint = false;
+  input.move.x = 0; input.move.y = 0; input.mag = 0;
+  input.sprintHeld = false; input.sprintToggle = false;
   input.presses = {};
+  updateSprintVisual();
 }
 
 export function setupInput() {
@@ -48,15 +58,13 @@ export function setupInput() {
       input.move.x = dx / JOY_RADIUS;
       input.move.y = dy / JOY_RADIUS;
     }
-    input.sprint = mag >= SPRINT_MAG;
-    joyBase.classList.toggle('sprinting', input.sprint);
   };
 
   const joyEnd = (e) => {
     if (e.pointerId !== joyId) return;
     joyId = null;
     joyBase.classList.add('hidden');
-    input.move.x = 0; input.move.y = 0; input.mag = 0; input.sprint = false;
+    input.move.x = 0; input.move.y = 0; input.mag = 0;
   };
 
   joyZone.addEventListener('pointerdown', (e) => {
@@ -96,6 +104,16 @@ export function setupInput() {
   bind('btn-jump', 'jump');
   bind('btn-net', 'net');
 
+  // SPRINT is a toggle, not a momentary action
+  const sprintBtn = document.getElementById('btn-sprint');
+  sprintBtn.addEventListener('pointerdown', (e) => {
+    initAudio(); resumeAudio();
+    input.sprintToggle = !input.sprintToggle;
+    updateSprintVisual();
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
   // Keyboard fallback
   const keys = {};
   const keyActions = {
@@ -124,14 +142,15 @@ export function setupInput() {
     if (keys.KeyD || keys.ArrowRight) x += 1;
     if (keys.KeyW || keys.ArrowUp) y -= 1;
     if (keys.KeyS || keys.ArrowDown) y += 1;
+    input.sprintHeld = !!(keys.ShiftLeft || keys.ShiftRight);
     if (x || y) {
       const len = Math.hypot(x, y);
       input.move.x = x / len; input.move.y = y / len;
       input.mag = 1;
-      input.sprint = !!(keys.ShiftLeft || keys.ShiftRight);
     } else if (joyId === null) {
-      input.move.x = 0; input.move.y = 0; input.mag = 0; input.sprint = false;
+      input.move.x = 0; input.move.y = 0; input.mag = 0;
     }
+    updateSprintVisual();
   }
 
   // Unlock audio on the very first touch anywhere (incl. menus)
