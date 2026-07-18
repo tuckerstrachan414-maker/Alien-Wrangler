@@ -201,8 +201,8 @@ html, body {
   position: absolute;
   right: calc(var(--safe-right) + 10px);
   bottom: calc(var(--safe-bottom) + 14px);
-  width: 180px;
-  height: 214px;
+  width: 145px;
+  height: 172px;
   pointer-events: none;
 }
 .act-btn {
@@ -237,12 +237,12 @@ html, body {
     -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
     inset 2px 2px 0 0 rgba(255,231,150,0.5), inset -2px -2px 0 0 rgba(0,0,0,0.4);
 }
-#btn-grab   { width: 84px; height: 84px; right: 0;    bottom: 44px;  font-size: 11px; background: #1c3a2a; }
-#btn-dive   { width: 58px; height: 58px; right: 90px; bottom: 8px;   font-size: 8px; }
-#btn-dash   { width: 58px; height: 58px; right: 96px; bottom: 76px;  font-size: 8px; }
-#btn-jump   { width: 54px; height: 54px; right: 8px;  bottom: 132px; font-size: 8px; }
-#btn-sprint { width: 60px; height: 60px; right: 86px; bottom: 146px; font-size: 6.5px; }
-#btn-net    { width: 52px; height: 52px; right: 150px; bottom: 10px; font-size: 8px; background: #3a3316; }
+#btn-grab   { width: 64px; height: 64px; right: 0;   bottom: 32px;  font-size: 8.5px; background: #1c3a2a; }
+#btn-dive   { width: 44px; height: 44px; right: 68px; bottom: 6px;  font-size: 6px; }
+#btn-dash   { width: 44px; height: 44px; right: 72px; bottom: 56px; font-size: 6px; }
+#btn-jump   { width: 40px; height: 40px; right: 6px;  bottom: 100px; font-size: 6px; }
+#btn-sprint { width: 46px; height: 46px; right: 64px; bottom: 110px; font-size: 5px; }
+#btn-net    { width: 38px; height: 38px; right: 114px; bottom: 8px;  font-size: 6px; background: #3a3316; }
 
 /* ---------- Menu screens ---------- */
 #ui-root { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
