@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0c14">
+<title>Alien Wrangler</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- In-game HUD (top) -->
+  <div id="hud" class="hidden">
+    <div id="hud-top">
+      <div class="hud-pill" id="hud-timer">
+        <span class="ufo-ico">&#128760;</span><span id="timer-text">2:30</span>
+      </div>
+      <div class="hud-pill" id="hud-score">
+        <span class="alien-ico">&#128126;</span><span id="score-text">0/5</span>
+      </div>
+      <div class="hud-pill" id="hud-cash"><span id="cash-text">$0</span></div>
+      <button class="hud-pill hud-btn" id="btn-pause">&#10074;&#10074;</button>
+    </div>
+    <div id="hud-warning" class="hidden">UFO INBOUND</div>
+    <div id="stamina-wrap"><div id="stamina-bar"></div></div>
+  </div>
+
+  <!-- Touch controls -->
+  <div id="controls" class="hidden">
+    <div id="joy-zone">
+      <div id="joy-base" class="hidden"><div id="joy-knob"></div></div>
+    </div>
+    <div id="btn-zone">
+      <button class="act-btn" id="btn-grab">GRAB</button>
+      <button class="act-btn" id="btn-dive">DIVE</button>
+      <button class="act-btn" id="btn-dash">DASH</button>
+      <button class="act-btn" id="btn-jump">JUMP</button>
+      <button class="act-btn hidden" id="btn-net">NET</button>
+    </div>
+  </div>
+
+  <!-- Menu overlay screens are built by ui.js into this root -->
+  <div id="ui-root"></div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
