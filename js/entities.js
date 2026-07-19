@@ -1,5 +1,6 @@
 import { collide, overlapsJumpable, findPath, lineBlocked } from './nav.js';
 import { ALIEN_STATS } from './data/missions.js';
+import { updateSprintVisual } from './input.js';
 
 const GRAV = 430;
 
@@ -144,7 +145,12 @@ export class Player {
     if (sprinting) {
       this.stamina = Math.max(0, this.stamina - 20 * dt);
       this.staminaDelay = 0.5;
-      if (this.stamina <= 0) sprinting = false;
+    }
+    // stamina ran dry while trying to sprint: kill the toggle so it doesn't
+    // silently resume the instant stamina regens — re-press required
+    if (moveIn.sprintToggle && this.moving && this.stamina <= 1) {
+      moveIn.sprintToggle = false;
+      updateSprintVisual();
     }
     const top = (sprinting ? this.sprintSpeed : this.baseSpeed) * this.carryPenalty * (this.moving ? mag : 0);
     const ax = 900;

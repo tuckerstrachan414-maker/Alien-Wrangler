@@ -487,7 +487,9 @@ export function buildProps() {
   // ---- Playground ----
   p.tree = {
     img: propCanvas(30, 34, (px, ctx, box, blob) => {
-      px(13, 24, 4, 9, C.wd1); px(13, 24, 1, 9, C.wd2); px(16, 24, 1, 9, C.wd0);
+      // trunk drawn tall (up into the canopy) so the blob painted after it
+      // covers the top and the visible stub connects with no gap
+      px(13, 14, 4, 19, C.wd1); px(13, 14, 1, 19, C.wd2); px(16, 14, 1, 19, C.wd0);
       px(12, 32, 6, 2, C.wd0);
       const spans = [
         [12, 17], [9, 20], [7, 22], [5, 24], [4, 25], [4, 25], [3, 26], [3, 26],
