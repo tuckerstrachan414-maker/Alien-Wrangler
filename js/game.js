@@ -19,7 +19,7 @@ export class Game {
   startMission(mission) {
     this.mission = mission;
     this.fx = gearEffects(save.gear);
-    this.map = MAP_BUILDERS[mission.map]();
+    this.map = MAP_BUILDERS[mission.map](this.assets);
     this.nav = buildNav(this.map);
     this.hideSpots = this.map.hideSpots;
 

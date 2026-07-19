@@ -1,4 +1,5 @@
 import { buildTiles, buildActors, buildVan, buildUfo } from './data/sprites.js';
+import { loadPngProps } from './data/pngProps.js';
 import { getMission, gearEffects } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
 import { setupInput, consumePress, clearInput, showNetButton } from './input.js';
@@ -14,6 +15,15 @@ const assets = {
   van: buildVan(),
   ufo: buildUfo(),
 };
+
+// Maple Street's buildings/cars/props are PNGs from a user-supplied asset
+// pack; every other map stays procedural. If they fail to load, buildNeighborhood()
+// falls back to the original canvas art.
+try {
+  assets.pngProps = await loadPngProps();
+} catch (err) {
+  console.warn('Maple Street PNG props failed to load, using procedural fallback:', err);
+}
 
 // ---- HUD pixel icons (drawn in code, match the game art) ----
 function iconCanvas(w, h, draw) {

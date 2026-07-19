@@ -48,7 +48,12 @@ class MapBuilder {
   }
 
   prop(key, x, y, opts = {}) {
-    const def = PROPS[key];
+    return this.customProp(PROPS[key], x, y, opts, key);
+  }
+
+  // Like prop(), but takes a prop definition directly instead of a PROPS[key]
+  // lookup — used for map-specific PNG-backed props (e.g. Maple Street).
+  customProp(def, x, y, opts = {}, key = null) {
     const pr = { key, x, y, img: def.img, tall: def.tall, baseY: y + def.img.height };
     this.props.push(pr);
     if (def.solid && !opts.noSolid) {
@@ -68,8 +73,12 @@ class MapBuilder {
 
   // Place a house and register its lit windows as stealth "homes".
   house(key, x, y) {
-    this.prop(key, x, y);
-    const def = PROPS[key];
+    return this.customHouse(PROPS[key], x, y);
+  }
+
+  // Like house(), but takes a prop definition directly (see customProp()).
+  customHouse(def, x, y) {
+    this.customProp(def, x, y);
     for (const w of def.windows || []) {
       this.homes.push({ x: x + w.x, y: y + w.y, w: w.w, h: w.h, alertT: 0 });
     }
@@ -249,7 +258,14 @@ export function buildShipyard() {
 // Stealth map: catch the aliens without waking the neighbours. Loud moves
 // (sprint/dash/dive) near a house raise Suspicion; max it out and the block
 // wakes up — the aliens scatter and you get fined.
-export function buildNeighborhood() {
+//
+// Buildings, cars, streetlamps, trees, mailboxes and trash cans here are
+// PNGs from a user-supplied city asset pack (assets/maple/, via pngProps.js)
+// instead of the procedural canvas art — Maple Street only, every other map
+// is unaffected. Falls back to the procedural suburban art if the PNGs
+// haven't loaded (assets.pngProps missing).
+export function buildNeighborhood(assets) {
+  const png = assets && assets.pngProps;
   const m = new MapBuilder('Maple Street', 40, 34, T.GRASS);
   m.variety(T.GRASS, T.GRASS2, 0.3, 41);
   m.stealth = true;
@@ -265,42 +281,68 @@ export function buildNeighborhood() {
   for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 12, 3, 2);
   for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 20, 3, 2);
 
-  // top row of houses (facing down toward the road)
-  const topHouses = [['houseCream', 40], ['houseTan', 208], ['houseBrick', 380], ['houseCream', 540]];
-  for (const [key, x] of topHouses) {
-    m.house(key, x, 108);
-    m.prop('mailbox', x + 68, 176, { noSolid: false });
-  }
-  // bottom row of houses (facing up)
-  const botHouses = [['houseBrick', 40], ['houseCream', 208], ['houseTan', 380], ['houseBrick', 540]];
-  for (const [key, x] of botHouses) {
-    m.house(key, x, 300);
-    m.prop('mailbox', x - 6, 300, { noSolid: false });
+  if (png) {
+    // top row of buildings (facing down toward the road)
+    const topHouses = [png.houseA, png.houseB, png.houseC, png.houseA];
+    const topX = [40, 208, 380, 540];
+    for (let i = 0; i < topX.length; i++) {
+      m.customHouse(topHouses[i], topX[i], 88);
+      m.customProp(png.mailbox, topX[i] - 14, 195);
+    }
+    // bottom row of buildings
+    const botHouses = [png.houseC, png.houseA, png.houseB, png.houseC];
+    const botX = [40, 208, 380, 540];
+    for (let i = 0; i < botX.length; i++) {
+      m.customHouse(botHouses[i], botX[i], 340);
+      m.customProp(png.mailbox, botX[i] - 26, 340);
+    }
+
+    // parked cars / truck on driveways / curbs
+    m.customProp(png.carRed, 96, 192); m.customProp(png.carBlue, 250, 192);
+    m.customProp(png.truck, 96, 268); m.customProp(png.carRed, 420, 268); m.customProp(png.carBlue, 560, 192);
+
+    // street trees + lamps along the sidewalks
+    for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
+      m.customProp(png.tree, x, y);
+    for (const [x, y] of [[250, 216], [360, 216], [250, 296], [140, 216], [470, 296]])
+      m.customProp(png.lamp, x, y);
+
+    // trash cans tucked around
+    for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
+      m.customProp(png.trashcan, x, y);
+  } else {
+    // ---- procedural fallback (identical to the original art) ----
+    const topHouses = [['houseCream', 40], ['houseTan', 208], ['houseBrick', 380], ['houseCream', 540]];
+    for (const [key, x] of topHouses) {
+      m.house(key, x, 108);
+      m.prop('mailbox', x + 68, 176);
+    }
+    const botHouses = [['houseBrick', 40], ['houseCream', 208], ['houseTan', 380], ['houseBrick', 540]];
+    for (const [key, x] of botHouses) {
+      m.house(key, x, 300);
+      m.prop('mailbox', x - 6, 300);
+    }
+    m.prop('carRed', 96, 192); m.prop('carBlue', 250, 192);
+    m.prop('carWhite', 96, 268); m.prop('carRed', 420, 268); m.prop('carBlue', 560, 192);
+    for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
+      m.prop('tree', x, y);
+    for (const [x, y] of [[250, 216], [360, 216], [250, 296], [140, 216], [470, 296]])
+      m.prop('lamppost', x, y);
+    for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
+      m.prop('trashcan', x, y);
   }
 
-  // parked cars on driveways / curbs
-  m.prop('carRed', 96, 192); m.prop('carBlue', 250, 192);
-  m.prop('carWhite', 96, 268); m.prop('carRed', 420, 268); m.prop('carBlue', 560, 192);
-
-  // hedges dividing the yards (prime hiding, vaultable)
+  // hedges dividing the yards (prime hiding, vaultable) — kept procedural
   const hedges = [
-    [150, 130], [150, 170], [322, 130], [478, 150],
-    [150, 320], [322, 320], [322, 360], [478, 330],
+    [150, 110], [150, 150], [322, 110], [478, 130],
+    [150, 360], [322, 360], [322, 400], [478, 370],
     [40, 200], [590, 300],
   ];
   for (const [x, y] of hedges) m.prop('hedge', x, y);
 
-  // trash cans + bushes tucked around
-  for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
-    m.prop('trashcan', x, y);
+  // bushes tucked around — kept procedural
   for (const [x, y] of [[120, 470], [360, 130], [220, 500], [520, 500], [80, 380]])
     m.prop('bush', x, y);
-
-  // street trees + lamps along the sidewalks
-  for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
-    m.prop('tree', x, y);
-  for (const [x, y] of [[250, 216], [360, 216], [250, 296], [140, 216], [470, 296]])
-    m.prop('lamppost', x, y);
 
   m.placeVan(240, 208);                    // agent's van idling on the road
   m.spawn = { x: 300, y: 250 };
