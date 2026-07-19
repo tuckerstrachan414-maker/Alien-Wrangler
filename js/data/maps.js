@@ -259,11 +259,19 @@ export function buildShipyard() {
 // (sprint/dash/dive) near a house raise Suspicion; max it out and the block
 // wakes up — the aliens scatter and you get fined.
 //
-// Buildings, cars, streetlamps, trees, mailboxes and trash cans here are
-// PNGs from a user-supplied city asset pack (assets/maple/, via pngProps.js)
-// instead of the procedural canvas art — Maple Street only, every other map
-// is unaffected. Falls back to the procedural suburban art if the PNGs
-// haven't loaded (assets.pngProps missing).
+// Real block layout: a horizontal street crossed by a side street, sidewalks
+// on every edge, a marked crosswalk + traffic lights at the intersection,
+// and two house lots per side of the cross street (split into a west block
+// and an east block) — each house set back in its own yard with a driveway
+// running from the garage straight down to the curb, a car parked on it and
+// a mailbox at the curb end. Streetlamps and trees live on the sidewalk/yard
+// strip only, never on the asphalt.
+//
+// Buildings, cars, the streetlamp/tree/mailbox/trash can, the traffic
+// lights and the road/crosswalk tiles are all PNGs from a user-supplied
+// city asset pack (assets/maple/, via pngProps.js) — Maple Street only,
+// every other map is unaffected. Falls back to the original procedural
+// suburban layout if the PNGs haven't loaded (assets.pngProps missing).
 export function buildNeighborhood(assets) {
   const png = assets && assets.pngProps;
   const m = new MapBuilder('Maple Street', 40, 34, T.GRASS);
@@ -271,57 +279,18 @@ export function buildNeighborhood(assets) {
   m.stealth = true;
   m.tint = 'night';
 
-  // road grid (cross of asphalt) with concrete sidewalks
-  m.fill(T.CONCRETE, 0, 13, 40, 8);       // horizontal corridor
-  m.fill(T.ASPHALT, 0, 15, 40, 4);        // horizontal road
-  m.fill(T.CONCRETE, 15, 0, 8, 34);       // vertical corridor
-  m.fill(T.ASPHALT, 17, 0, 4, 34);        // vertical road
-
-  // driveways (concrete) from each house down/up to the road
-  for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 12, 3, 2);
-  for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 20, 3, 2);
-
-  if (png) {
-    // top row of buildings (facing down toward the road)
-    const topHouses = [png.houseA, png.houseB, png.houseC, png.houseA];
-    const topX = [40, 208, 380, 540];
-    for (let i = 0; i < topX.length; i++) {
-      m.customHouse(topHouses[i], topX[i], 88);
-      m.customProp(png.mailbox, topX[i] - 14, 195);
-    }
-    // bottom row of buildings
-    const botHouses = [png.houseC, png.houseA, png.houseB, png.houseC];
-    const botX = [40, 208, 380, 540];
-    for (let i = 0; i < botX.length; i++) {
-      m.customHouse(botHouses[i], botX[i], 340);
-      m.customProp(png.mailbox, botX[i] - 26, 340);
-    }
-
-    // parked cars / truck on driveways / curbs
-    m.customProp(png.carRed, 96, 192); m.customProp(png.carBlue, 250, 192);
-    m.customProp(png.truck, 96, 268); m.customProp(png.carRed, 420, 268); m.customProp(png.carBlue, 560, 192);
-
-    // street trees + lamps along the sidewalks
-    for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
-      m.customProp(png.tree, x, y);
-    for (const [x, y] of [[250, 216], [360, 216], [250, 296], [140, 216], [470, 296]])
-      m.customProp(png.lamp, x, y);
-
-    // trash cans tucked around
-    for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
-      m.customProp(png.trashcan, x, y);
-  } else {
-    // ---- procedural fallback (identical to the original art) ----
+  if (!png) {
+    // ---- procedural fallback (identical to the original art/layout) ----
+    m.fill(T.CONCRETE, 0, 13, 40, 8);
+    m.fill(T.ASPHALT, 0, 15, 40, 4);
+    m.fill(T.CONCRETE, 15, 0, 8, 34);
+    m.fill(T.ASPHALT, 17, 0, 4, 34);
+    for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 12, 3, 2);
+    for (const dx of [88, 232, 392, 536]) m.fill(T.CONCRETE, (dx / 16) | 0, 20, 3, 2);
     const topHouses = [['houseCream', 40], ['houseTan', 208], ['houseBrick', 380], ['houseCream', 540]];
-    for (const [key, x] of topHouses) {
-      m.house(key, x, 108);
-      m.prop('mailbox', x + 68, 176);
-    }
+    for (const [key, x] of topHouses) { m.house(key, x, 108); m.prop('mailbox', x + 68, 176); }
     const botHouses = [['houseBrick', 40], ['houseCream', 208], ['houseTan', 380], ['houseBrick', 540]];
-    for (const [key, x] of botHouses) {
-      m.house(key, x, 300);
-      m.prop('mailbox', x - 6, 300);
-    }
+    for (const [key, x] of botHouses) { m.house(key, x, 300); m.prop('mailbox', x - 6, 300); }
     m.prop('carRed', 96, 192); m.prop('carBlue', 250, 192);
     m.prop('carWhite', 96, 268); m.prop('carRed', 420, 268); m.prop('carBlue', 560, 192);
     for (const [x, y] of [[8, 60], [270, 60], [470, 60], [610, 60], [110, 500], [430, 500], [590, 480], [8, 240]])
@@ -330,22 +299,93 @@ export function buildNeighborhood(assets) {
       m.prop('lamppost', x, y);
     for (const [x, y] of [[20, 130], [300, 470], [610, 130], [8, 470], [470, 470]])
       m.prop('trashcan', x, y);
+    const hedges = [[150, 130], [150, 170], [322, 130], [478, 150], [150, 320], [322, 320], [322, 360], [478, 330], [40, 200], [590, 300]];
+    for (const [x, y] of hedges) m.prop('hedge', x, y);
+    for (const [x, y] of [[120, 470], [360, 130], [220, 500], [520, 500], [80, 380]]) m.prop('bush', x, y);
+    m.placeVan(240, 208);
+    m.spawn = { x: 300, y: 250 };
+    return m.done();
   }
 
-  // hedges dividing the yards (prime hiding, vaultable) — kept procedural
-  const hedges = [
-    [150, 110], [150, 150], [322, 110], [478, 130],
-    [150, 360], [322, 360], [322, 400], [478, 370],
-    [40, 200], [590, 300],
-  ];
-  for (const [x, y] of hedges) m.prop('hedge', x, y);
+  // ---- road grid: 8-tile sidewalk corridors with a centered 4-tile road ----
+  m.fill(T.CONCRETE, 0, 13, 40, 8);         // horizontal sidewalk corridor
+  m.fill(T.CONCRETE, 15, 0, 8, 34);         // vertical sidewalk corridor
+  m.fill(T.ROAD_PNG, 0, 15, 40, 4);         // horizontal road
+  m.fill(T.ROAD_PNG, 17, 0, 4, 34);         // vertical road
+  m.variety(T.ROAD_PNG, T.MANHOLE, 0.035, 51);
+  m.variety(T.ROAD_PNG, T.DRAIN, 0.025, 52);
 
-  // bushes tucked around — kept procedural
-  for (const [x, y] of [[120, 470], [360, 130], [220, 500], [520, 500], [80, 380]])
-    m.prop('bush', x, y);
+  // crosswalks: one per approach, laid across the road at the intersection
+  m.fill(T.CROSSWALK_H, 15, 15, 2, 4); m.fill(T.CROSSWALK_H, 21, 15, 2, 4);   // west / east legs
+  m.fill(T.CROSSWALK_V, 17, 13, 4, 2); m.fill(T.CROSSWALK_V, 17, 19, 4, 2);   // north / south legs
 
-  m.placeVan(240, 208);                    // agent's van idling on the road
-  m.spawn = { x: 300, y: 250 };
+  // center-line lane markings on the straight approaches (not through the junction)
+  m.fill(T.LANE_H, 0, 16, 15, 1); m.fill(T.LANE_H, 23, 16, 17, 1);
+  m.fill(T.LANE_V, 18, 0, 1, 13); m.fill(T.LANE_V, 18, 21, 1, 13);
+
+  // traffic lights at two diagonal corners of the intersection
+  m.customProp(png.trafficlight, 248, 214);
+  m.customProp(png.trafficlight, 352, 322);
+
+  // ---- house lots: cross street splits the block into a west/east side, ----
+  // ---- 2 houses each side per row, each with its own driveway + curb cut ----
+  const LOT_X = [64, 176, 448, 560];        // lot centers, tile-aligned
+  const TOP_FRONT_Y = 160;                  // top row: houses' door (bottom) edge
+  const BOT_FRONT_Y = 384;                  // bottom row: houses' door (top) edge, mirrored art
+
+  const topDefs = [png.houseI, png.houseJ, png.houseA, png.houseK];
+  const botDefs = [png.houseCFlipped, png.houseKFlipped, png.houseIFlipped, png.houseJFlipped];
+  const carDefs = [png.carRed, png.truck2, png.carBlue, png.truck];
+
+  for (let i = 0; i < LOT_X.length; i++) {
+    const lx = LOT_X[i];
+
+    // driveway: 2-tile concrete strip from the curb up to the house
+    m.fill(T.CONCRETE, lx / 16 - 1, 10, 2, 3);   // top row: rows 10-12 (y160-208)
+    m.fill(T.CONCRETE, lx / 16 - 1, 21, 2, 3);   // bottom row: rows 21-23 (y336-384)
+
+    // top-row house, bottom (door) edge sits at TOP_FRONT_Y, facing the road
+    const th = topDefs[i];
+    m.customHouse(th, lx - th.img.width / 2, TOP_FRONT_Y - th.img.height);
+    // bottom-row house, mirrored so its door (now at the top of the art) faces the road
+    const bh = botDefs[i];
+    m.customHouse(bh, lx - bh.img.width / 2, BOT_FRONT_Y);
+
+    // car parked on the driveway; mailbox offset clear of the widest vehicle (the truck)
+    const car = carDefs[i];
+    m.customProp(car, lx - car.img.width / 2, Math.round(184 - car.img.height / 2));
+    m.customProp(png.mailbox, lx + 40, 195);
+    const car2 = carDefs[(i + 2) % carDefs.length];
+    m.customProp(car2, lx - car2.img.width / 2, Math.round(360 - car2.img.height / 2));
+    m.customProp(png.mailbox, lx + 40, 339);
+  }
+
+  // hedges marking the property line between the two houses on each side
+  // (procedural — no matching PNG asset — but scoped to this map only via
+  // customProp(), so it doesn't touch the shared 'hedge' used elsewhere)
+  m.customProp(PROPS.hedge, 112, 152); m.customProp(PROPS.hedge, 112, 356);
+  m.customProp(PROPS.hedge, 496, 152); m.customProp(PROPS.hedge, 496, 356);
+
+  // street trees tucked into the gaps between driveways/mailboxes — clear of
+  // the road, crosswalks and every mailbox footprint
+  for (const x of [16, 134, 390, 518]) {
+    m.customProp(png.tree, x, 176);
+    m.customProp(png.tree, x, 340);
+  }
+  // trash cans at the curb, clear of mailboxes and the intersection corners
+  for (const [x, y] of [[16, 220], [615, 228], [16, 324], [615, 312]])
+    m.customProp(png.trashcan, x, y);
+
+  // streetlamps on the sidewalk strip only — never on the asphalt — spaced
+  // between driveways and clear of the crosswalk/intersection zone
+  for (const x of [95, 205, 405, 505]) {
+    m.customProp(png.lamp, x, 224);
+    m.customProp(png.lamp, x, 320);
+  }
+
+  // agent's van idling curbside on the west approach, clear of the crosswalk
+  m.placeVan(150, 250);
+  m.spawn = { x: 150, y: 270 };
   return m.done();
 }
 

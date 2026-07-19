@@ -380,6 +380,10 @@ export const T = {
   GRASS: 0, GRASS2: 1, WOODCHIP: 2, SAND: 3, DIRT: 4, CONCRETE: 5,
   ASPHALT: 6, PLANK: 7, WATER: 8, GRAVEL: 9, CORNFIELD: 10, PATH: 11,
   JUNGLE: 12, FLOWERS: 13, LAVAROCK: 14,
+  // PNG road tiles (Maple Street only, filled in from pngProps.js once loaded —
+  // buildTiles() below leaves these slots as a plain-asphalt placeholder).
+  ROAD_PNG: 15, CROSSWALK_H: 16, CROSSWALK_V: 17, LANE_H: 18, LANE_V: 19,
+  MANHOLE: 20, DRAIN: 21,
 };
 
 function speckleTile(base, specks, seed, density = 14) {
@@ -456,6 +460,10 @@ export function buildTiles() {
     return t;
   })();
   tiles[T.LAVAROCK] = speckleTile('#3d3742', ['#2a2530', '#544b58', '#7a1a10'], 141, 18);
+  // Placeholders for the Maple Street PNG road tiles — overwritten in main.js
+  // once pngProps loads; kept as plain asphalt so a load failure still renders.
+  for (const id of [T.ROAD_PNG, T.CROSSWALK_H, T.CROSSWALK_V, T.LANE_H, T.LANE_V, T.MANHOLE, T.DRAIN])
+    tiles[id] = tiles[T.ASPHALT];
   return tiles;
 }
 

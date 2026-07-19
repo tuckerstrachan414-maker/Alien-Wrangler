@@ -1,4 +1,4 @@
-import { buildTiles, buildActors, buildVan, buildUfo } from './data/sprites.js';
+import { buildTiles, buildActors, buildVan, buildUfo, T } from './data/sprites.js';
 import { loadPngProps } from './data/pngProps.js';
 import { getMission, gearEffects } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
@@ -16,11 +16,19 @@ const assets = {
   ufo: buildUfo(),
 };
 
-// Maple Street's buildings/cars/props are PNGs from a user-supplied asset
-// pack; every other map stays procedural. If they fail to load, buildNeighborhood()
-// falls back to the original canvas art.
+// Maple Street's buildings/cars/roads/props are PNGs from a user-supplied
+// asset pack; every other map stays procedural. If they fail to load,
+// buildNeighborhood() falls back to the original canvas art.
 try {
   assets.pngProps = await loadPngProps();
+  const t = assets.pngProps.tiles;
+  assets.tiles[T.ROAD_PNG] = t.road;
+  assets.tiles[T.CROSSWALK_H] = t.crosswalkH;
+  assets.tiles[T.CROSSWALK_V] = t.crosswalkV;
+  assets.tiles[T.LANE_H] = t.laneH;
+  assets.tiles[T.LANE_V] = t.laneV;
+  assets.tiles[T.MANHOLE] = t.manhole;
+  assets.tiles[T.DRAIN] = t.drain;
 } catch (err) {
   console.warn('Maple Street PNG props failed to load, using procedural fallback:', err);
 }
