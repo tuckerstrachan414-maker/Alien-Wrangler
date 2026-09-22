@@ -1,9 +1,10 @@
 import {
   MISSIONS, getMission, GEAR, MAP_LIST, SANDBOX_TIMES,
-  sandboxMission, gearMaxLevel, abandonFee,
+  sandboxMission, gearMaxLevel, abandonFee, gearEffects,
 } from './data/missions.js';
 import { save, persist, resetSave } from './save.js';
 import { sfx } from './audio.js';
+import { buildReport, buildDossier, typewrite } from './briefing.js';
 
 const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
@@ -142,13 +143,60 @@ export class UI {
       if (!locked) {
         const row = this.el('div', 'card-row');
         if (clearedBefore) row.appendChild(this.el('div', 'done', `CLEARED &middot; best $${save.bestPay[m.id] || 0}`));
-        const play = this.btn(clearedBefore ? 'REPLAY' : 'DEPLOY', clearedBefore ? '' : 'primary', () => this.actions.startMission(i));
+        const play = this.btn(clearedBefore ? 'REPLAY' : 'DEPLOY', clearedBefore ? '' : 'primary', () => this.showBriefing(i));
         row.appendChild(play);
         card.appendChild(row);
       }
       list.appendChild(card);
     }
     s.appendChild(this.btn('BACK', '', () => this.showPlay()));
+  }
+
+  /* ---------------- mission brief ---------------- */
+
+  // Classified memo for contract n: personnel file on the left, the report
+  // typing itself out on the right. `instant` skips the typing (coming back
+  // from the shop, say).
+  showBriefing(n, { instant = false } = {}) {
+    const m = getMission(n);
+    this._briefN = n;
+    const s = this.screen('brief');
+
+    const head = this.el('div', 'brief-head');
+    head.appendChild(this.el('div', 'brief-title', 'MISSION BRIEFING'));
+    head.appendChild(this.el('div', 'brief-op', `OP ${String(n + 1).padStart(2, '0')} &middot; ${m.name.toUpperCase()}`));
+    s.appendChild(head);
+
+    const body = this.el('div', 'brief-body');
+    const dossierPane = this.el('div', 'brief-pane dossier-pane');
+    dossierPane.appendChild(buildDossier(this.assets, gearEffects(save.gear), save.gear));
+    const reportPane = this.el('div', 'brief-pane report-pane');
+    const paper = buildReport(m, gearEffects(save.gear));
+    reportPane.appendChild(paper);
+    const skip = this.el('div', 'brief-skip', 'TAP REPORT TO SKIP');
+    reportPane.appendChild(skip);
+    body.appendChild(dossierPane);
+    body.appendChild(reportPane);
+    s.appendChild(body);
+
+    const foot = this.el('div', 'brief-foot');
+    foot.appendChild(this.btn('BACK', '', () => this.showMissions()));
+    foot.appendChild(this.btn('GEAR UP', '', () => this.showShop('brief')));
+    const go = this.btn('BEGIN OP', 'primary go', () => this.actions.startMission(n));
+    foot.appendChild(go);
+    s.appendChild(foot);
+
+    const done = () => {
+      skip.classList.add('hidden');
+      go.classList.add('ready');
+    };
+    if (instant) {
+      paper.classList.add('typed', 'instant');
+      done();
+      return;
+    }
+    const tw = typewrite(paper, { scroller: reportPane, onDone: done });
+    reportPane.addEventListener('click', () => { if (!tw.done) tw.finish(); });
   }
 
   /* ---------------- shop ---------------- */
@@ -160,7 +208,12 @@ export class UI {
     const list = this.el('div', 'card-list');
     s.appendChild(list);
 
+    let perkHeader = false;
     for (const g of GEAR) {
+      if (g.perk && !perkHeader) {
+        perkHeader = true;
+        list.appendChild(this.el('div', 'section-label wide', 'PERKS'));
+      }
       const lv = save.gear[g.id] || 0;
       const maxed = lv >= g.levels.length;
       const next = maxed ? null : g.levels[lv];
@@ -190,8 +243,13 @@ export class UI {
       card.appendChild(row);
       list.appendChild(card);
     }
-    const back = { missions: () => this.showMissions(), title: () => this.showTitle() }[backTo] || (() => this.showPlay());
-    s.appendChild(this.btn('BACK', '', back));
+    const back = {
+      missions: () => this.showMissions(),
+      title: () => this.showTitle(),
+      brief: () => this.showBriefing(this._briefN, { instant: true }),
+    }[backTo] || (() => this.showPlay());
+    if (backTo === 'brief') s.appendChild(this.btn('BACK TO BRIEFING', 'primary', back));
+    if (backTo !== 'brief') s.appendChild(this.btn('BACK', '', back));
   }
 
   /* ---------------- settings ---------------- */
@@ -283,12 +341,14 @@ export class UI {
       detail.appendChild(this.el('div', 'opt-name', gestures
         ? 'NO BUTTONS<small>' +
           'Screen splits down the middle, portrait or landscape.<br>' +
-          'LEFT &mdash; drag anywhere to walk &middot; flick UP to dash &middot; double-tap to toggle sprint.<br>' +
-          'RIGHT &mdash; tap to grab &middot; double-tap to fire the net gun &middot; flick UP to dive &middot; flick DOWN to jump.' +
+          'LEFT (legs) &mdash; drag anywhere to walk &middot; flick UP to jump &middot; double-tap for the Noise Maker. ' +
+          'Walk into a fence, bale or crate and you vault it automatically.<br>' +
+          'RIGHT (hands) &mdash; tap to grab &middot; HOLD to sprint &middot; SWIPE any direction to dive that way ' +
+          '(it&rsquo;s a dash if nothing&rsquo;s in reach) &middot; double-tap to fire the net gun.' +
           '</small>'
         : 'BUTTONS<small>' +
           'Floating joystick on the left, action buttons on the right.<br>' +
-          'GRAB &middot; DIVE &middot; DASH &middot; JUMP &middot; SPRINT toggle &middot; NET when equipped.' +
+          'GRAB &middot; DIVE &middot; DASH &middot; JUMP &middot; SPRINT toggle &middot; NET and NOISE when equipped.' +
           '</small>'));
       hintRow.classList.toggle('hidden', !gestures);
     };
@@ -502,7 +562,7 @@ export class UI {
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
 
     if (r.cleared && !r.abandoned) {
-      s.appendChild(this.btn('NEXT MISSION', 'primary', () => this.actions.startMission(Math.min(save.missionsCleared, r.mission.id + 1))));
+      s.appendChild(this.btn('NEXT MISSION', 'primary', () => this.showBriefing(Math.min(save.missionsCleared, r.mission.id + 1))));
     }
     s.appendChild(this.btn(r.cleared && !r.abandoned ? 'REPLAY' : 'RETRY', r.cleared && !r.abandoned ? '' : 'primary',
       () => this.actions.startMission(r.mission.id)));

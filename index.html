@@ -33,23 +33,23 @@
 
   <!-- Touch controls -->
   <div id="controls" class="hidden">
-    <!-- Left half: movement (drag to walk, flick up to dash, double-tap to sprint) -->
+    <!-- Left half = legs: drag to walk, flick up to jump, double-tap for the Noise Maker -->
     <div id="joy-zone">
       <div id="joy-base" class="hidden"><div id="joy-knob"></div></div>
     </div>
-    <!-- Right half: actions. Only live in no-buttons mode. -->
+    <!-- Right half = hands: tap grab, hold sprint, swipe dive. Only live in no-buttons mode. -->
     <div id="act-zone"></div>
     <div id="gesture-hints">
       <div class="ghint-col">
         <div class="ghint">DRAG <b>MOVE</b></div>
-        <div class="ghint" id="hint-dash">FLICK UP <b>DASH</b></div>
-        <div class="ghint" id="hint-sprint">2-TAP <b>SPRINT</b></div>
+        <div class="ghint" id="hint-jump">FLICK UP <b>JUMP</b></div>
+        <div class="ghint hidden" id="hint-noise">2-TAP <b>NOISE</b></div>
       </div>
       <div class="ghint-col">
         <div class="ghint" id="hint-grab">TAP <b>GRAB</b></div>
+        <div class="ghint" id="hint-sprint">HOLD <b>SPRINT</b></div>
+        <div class="ghint" id="hint-swipe">SWIPE <b>DIVE</b></div>
         <div class="ghint hidden" id="hint-net">2-TAP <b>NET</b></div>
-        <div class="ghint" id="hint-dive">FLICK UP <b>DIVE</b></div>
-        <div class="ghint" id="hint-jump">FLICK DOWN <b>JUMP</b></div>
       </div>
     </div>
     <div id="btn-zone">
@@ -59,6 +59,7 @@
       <button class="act-btn" id="btn-jump">JUMP</button>
       <button class="act-btn toggle" id="btn-sprint">SPRINT</button>
       <button class="act-btn hidden" id="btn-net">NET</button>
+      <button class="act-btn hidden" id="btn-noise">NOISE</button>
     </div>
   </div>
 

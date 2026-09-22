@@ -1,13 +1,21 @@
 import { TILE } from './data/sprites.js';
 import { MAP_BUILDERS } from './data/maps.js';
-import { gearEffects, ALIEN_STATS, abandonFee } from './data/missions.js';
-import { buildNav, collide } from './nav.js';
+import { gearEffects, ALIEN_STATS, abandonFee, NOISE_MAKER } from './data/missions.js';
+import { buildNav, collide, overlapsJumpable } from './nav.js';
 import { Player, Alien } from './entities.js';
-import { input, consumePress, setButtonCooling } from './input.js';
+import { input, consumePress, setButtonCooling, getControlMode } from './input.js';
 import { sfx } from './audio.js';
 import { save } from './save.js';
 
 const DEPOSIT_R = 30;
+
+// Swipe-to-dive aim assist (no-buttons mode): an alien inside this reach and
+// cone of the swipe gets dived at; otherwise the swipe is a dash.
+const DIVE_REACH = 104;
+const DIVE_CONE = Math.cos(40 * Math.PI / 180);
+
+// Field Drones Mk.II paints each tier its own arrow colour.
+const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
 
 export class Game {
   constructor(assets) {
@@ -52,8 +60,13 @@ export class Game {
     this.cam = { x: this.player.x, y: this.player.y };
     this.shake = 0;
     this.msg = null; this.msgT = 0;
+    this.flash = 0;             // Noise Maker white-out (seconds left)
+    this.shockwaves = [];       // Noise Maker blast rings
     this.running = true;
     this.time = 0;
+    // screen-space margins (buffer px) kept clear for edge arrows; main.js
+    // measures the HUD strip + safe areas and fills this in
+    if (!this.insets) this.insets = { top: 10, right: 10, bottom: 10, left: 10 };
 
     // stealth (neighbourhood) + ambient state
     this.stealth = !!this.map.stealth;
@@ -204,6 +217,88 @@ export class Game {
     });
   }
 
+  // Noise Maker: a deafening bang centred on the agent. Anything loose (or
+  // hiding) inside stunR is knocked out of cover / out of its cloak and
+  // stunned; hidden aliens out to pingR get a marker for a few seconds.
+  detonateNoise() {
+    const p = this.player;
+    const nm = NOISE_MAKER[this.fx.noisemaker];
+    if (!nm || p.noiseCd > 0 || p.state === 'stunned' || p.state === 'prone') return;
+    p.noiseCd = nm.cd;
+    sfx.bang();
+    this.shake = 8;
+    this.flash = 0.28;
+    this.shockwaves.push({ x: p.x, y: p.y, r: 4, max: nm.stunR, t: 0.45, life: 0.45, col: '#ffffff' });
+    this.shockwaves.push({ x: p.x, y: p.y, r: 4, max: nm.pingR, t: 0.8, life: 0.8, col: '#41f0d8' });
+    for (let i = 0; i < 16; i++) {
+      const a = Math.random() * Math.PI * 2, sp = 50 + Math.random() * 60;
+      this.particles.push({
+        x: p.x, y: p.y - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 10,
+        life: 0.45, t: 0.45, color: Math.random() < 0.5 ? '#fff6c8' : '#ffd75e', size: 1,
+      });
+    }
+    this.popup(p.x, p.y - 26, 'BANG!', '#fff6c8');
+
+    let stunned = 0, pinged = 0;
+    for (const a of this.aliens) {
+      const d = Math.hypot(a.x - p.x, a.y - p.y);
+      if (d <= nm.stunR) {
+        if (a.state === 'beaming' && a.riseZ < 26) {
+          // blasted out of the tractor beam — it drops back to the ground
+          a.riseZ = 0;
+          a.state = 'running';
+          if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+        }
+        if (!a.free) continue;
+        if (a.state === 'hiding') {
+          // blown out of cover: pop it a step toward the agent so the
+          // foliage/container isn't still hiding it
+          a.flush(this);
+          const len = d || 1;
+          const pos = collide(this.map, a.x + (p.x - a.x) / len * 12, a.y + (p.y - a.y) / len * 12, a.r, false);
+          a.x = pos.x; a.y = pos.y;
+          a.zv = 100; a.z = 0.1;
+        }
+        a.revealT = nm.pingT;
+        a.cloaked = false;
+        if (a.state === 'netted') a.stateT = Math.max(a.stateT, nm.stunT);
+        else a.stunned(nm.stunT);
+        this.popup(a.x, a.y - 16, 'STUNNED!', '#fff6c8');
+        stunned++;
+      } else if (d <= nm.pingR && a.free) {
+        a.revealT = nm.pingT;
+        if (a.state === 'hiding') pinged++;
+      }
+    }
+    if (stunned + pinged === 0) this.popup(p.x, p.y - 34, 'NOTHING NEARBY', '#8fa0c4');
+
+    // On Maple Street a bang is the loudest thing you can possibly do.
+    if (this.stealth) this.noisePulse(p.x, p.y, 70);
+  }
+
+  // No-buttons swipe: dive at an alien the swipe points at (with a little aim
+  // assist), otherwise dash that way. Either way the swipe always does something.
+  swipeAction(dir) {
+    const p = this.player;
+    if (!p.canAct) return;
+    let best = null, bestD = 1e9;
+    for (const a of this.aliens) {
+      if (!a.grabbable || a.z >= 16) continue;
+      const ax = a.x + a.vx * 0.12 - p.x, ay = a.y + a.vy * 0.12 - p.y;
+      const d = Math.hypot(ax, ay);
+      if (d > DIVE_REACH || d < 0.001) continue;
+      if ((ax * dir.x + ay * dir.y) / d < DIVE_CONE && d > 16) continue;
+      if (d < bestD) { bestD = d; best = { x: ax / d, y: ay / d }; }
+    }
+    if (best && !p.airborne) {
+      if (p.tryDive(best)) { sfx.dive(); return; }
+    }
+    if (p.tryDash(dir)) {
+      sfx.dash(); this.puff(p.x, p.y);
+      if (this.stealth) this.noisePulse(p.x, p.y, 18);
+    }
+  }
+
   /* ---------------- update ---------------- */
 
   update(dt) {
@@ -217,6 +312,16 @@ export class Game {
     if (consumePress('dive')) { if (p.tryDive()) sfx.dive(); }
     if (consumePress('grab')) this.grabAttempt();
     if (consumePress('net')) this.fireNet();
+    if (consumePress('noise')) this.detonateNoise();
+    if (consumePress('swipe')) this.swipeAction(input.swipeDir);
+
+    // No-buttons auto-vault: walk into a fence / hay bale / crate and you hop it.
+    if (getControlMode() === 'gestures' && p.state === 'normal' && p.moving && p.z === 0) {
+      const reach = p.r + 3;
+      if (overlapsJumpable(this.map, p.x + p.dir.x * reach, p.y + p.dir.y * reach, 2)) {
+        if (p.tryJump()) sfx.jump();
+      }
+    }
 
     const wasDiving = p.state === 'diving';
     p.update(dt, this.map, input);
@@ -309,6 +414,12 @@ export class Game {
     this.particles = this.particles.filter(pt => pt.t > 0);
     for (const r of this.rings) { r.r += r.spd * dt; r.t -= dt; }
     this.rings = this.rings.filter(r => r.t > 0);
+    for (const w of this.shockwaves) {
+      w.t -= dt;
+      w.r = 4 + (w.max - 4) * (1 - Math.pow(Math.max(0, w.t / w.life), 2.2));
+    }
+    this.shockwaves = this.shockwaves.filter(w => w.t > 0);
+    this.flash = Math.max(0, this.flash - dt);
     for (const pp of this.popups) { pp.y -= 14 * dt; pp.t -= dt; }
     this.popups = this.popups.filter(pp => pp.t > 0);
     this.msgT -= dt;
@@ -323,6 +434,11 @@ export class Game {
     setButtonCooling('btn-dash', p.dashCd > 0 || p.stamina < 18);
     setButtonCooling('btn-dive', p.stamina < 22 || !p.canAct);
     setButtonCooling('btn-net', p.netCd > 0);
+    setButtonCooling('btn-noise', p.noiseCd > 0);
+    setButtonCooling('hint-net', p.netCd > 0);
+    setButtonCooling('hint-noise', p.noiseCd > 0);
+    setButtonCooling('hint-swipe', p.stamina < 18 || !p.canAct);
+    setButtonCooling('hint-sprint', input.holdSpent || p.stamina <= 1);
 
     // mission end?
     const loose = this.aliens.filter(a => a.free || a.state === 'beaming');
@@ -513,17 +629,13 @@ export class Game {
       ctx.fillRect(0, 0, vw, vh);
     }
 
-    // hide-spot shimmer for goggles
-    const fx = this.fx;
-
     // ---- build y-sorted render list ----
     const items = [];
     for (const pr of map.props) items.push({ y: pr.baseY, kind: 'prop', pr });
     for (const a of this.aliens) {
       if (a.state === 'carried' || a.state === 'deposited' || a.state === 'escaped') continue;
       if (a.state === 'hiding') {
-        const dist = Math.hypot(a.x - p.x, a.y - p.y);
-        if (fx.goggleRange > dist) items.push({ y: a.y + 6, kind: 'hidden', a });
+        if (a.revealT > 0) items.push({ y: a.y + 6, kind: 'hidden', a });   // Noise Maker ping
         continue;
       }
       items.push({ y: a.y, kind: 'alien', a });
@@ -552,16 +664,17 @@ export class Game {
       } else if (it.kind === 'alien') {
         this.drawAlien(ctx, it.a, camX, camY);
       } else if (it.kind === 'hidden') {
-        // goggle marker
+        // Noise Maker ping marker (fades out over its last second)
         const a = it.a;
         const by = Math.sin(this.time * 6) * 2;
-        ctx.globalAlpha = 0.35;
+        ctx.globalAlpha = 0.35 * Math.min(1, a.revealT);
         const spr = this.assets.actors.aliens[a.tier].down;
         ctx.drawImage(spr, Math.round(a.x - 5 - camX), Math.round(a.y - 12 - camY));
-        ctx.globalAlpha = 1;
+        ctx.globalAlpha = Math.min(1, a.revealT);
         ctx.fillStyle = '#41f0d8';
         ctx.fillRect(Math.round(a.x - 1 - camX), Math.round(a.y - 22 + by - camY), 3, 3);
         ctx.fillRect(Math.round(a.x - camX), Math.round(a.y - 19 + by - camY), 1, 2);
+        ctx.globalAlpha = 1;
       }
     }
 
@@ -585,6 +698,20 @@ export class Game {
         ctx.globalAlpha = 1;
       }
     }
+
+    // Noise Maker blast rings
+    for (const w of this.shockwaves) {
+      ctx.globalAlpha = Math.max(0, w.t / w.life) * 0.8;
+      ctx.strokeStyle = w.col;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(Math.round(w.x - camX), Math.round(w.y - camY), w.r, w.r * 0.55, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    // Field Drones: two little quadcopters riding along above the agent
+    if (this.fx.drones) this.drawDrones(ctx, camX, camY);
 
     // beam + UFO on top
     if (this.ufo) this.drawUfo(ctx, camX, camY);
@@ -627,12 +754,21 @@ export class Game {
     }
     ctx.globalAlpha = 1;
 
-    // edge arrows: carrying -> van; endgame -> loose aliens
+    // edge arrows: carrying -> van; drones -> loose aliens; endgame -> everyone
     if (p.carried.length) this.edgeArrow(ctx, vw, vh, camX, camY, this.vanDoor.x, this.vanDoor.y, '#59d98c');
-    if (this.timer < 25 || this.beamPhase) {
-      for (const a of this.aliens) {
-        if (a.free || a.state === 'beaming') this.edgeArrow(ctx, vw, vh, camX, camY, a.x, a.y, '#ffd75e');
-      }
+    const endgame = !this.mission.endless && (this.timer < 25 || this.beamPhase);
+    for (const a of this.aliens) {
+      if (!(a.free || a.state === 'beaming')) continue;
+      if (this.droneTracks(a)) this.droneArrow(ctx, vw, vh, camX, camY, a);
+      else if (endgame) this.edgeArrow(ctx, vw, vh, camX, camY, a.x, a.y, '#ffd75e');
+    }
+
+    // Noise Maker white-out
+    if (this.flash > 0) {
+      ctx.globalAlpha = Math.min(0.55, this.flash * 2.2);
+      ctx.fillStyle = '#fff6e0';
+      ctx.fillRect(0, 0, vw, vh);
+      ctx.globalAlpha = 1;
     }
 
     // announcement
@@ -743,10 +879,7 @@ export class Game {
     if (a.state !== 'beaming') this.shadow(ctx, x, y, 9);
 
     let alpha = 1;
-    if (a.cloaked) {
-      const dist = Math.hypot(a.x - this.player.x, a.y - this.player.y);
-      alpha = this.fx.goggleRange > dist ? 0.55 : 0.13;
-    }
+    if (a.cloaked) alpha = 0.13;
     ctx.globalAlpha = alpha;
     const img = set[a.facing] || set.down;
     const moving = Math.hypot(a.vx, a.vy) > 12;
@@ -809,29 +942,108 @@ export class Game {
     ctx.drawImage(this.assets.ufo, x - 24, y - 11 + hover);
   }
 
-  edgeArrow(ctx, vw, vh, camX, camY, wx, wy, color) {
+  // Where an off-screen world point lands on the screen border (inside the
+  // HUD/safe-area insets), or null when the point is on screen.
+  edgePoint(vw, vh, camX, camY, wx, wy) {
+    const ins = this.insets;
+    const x0 = ins.left + 8, x1 = vw - ins.right - 8;
+    const y0 = ins.top + 8, y1 = vh - ins.bottom - 8;
     const sx = wx - camX, sy = wy - camY;
-    if (sx > 8 && sx < vw - 8 && sy > 8 && sy < vh - 8) return; // on screen
-    const cx = vw / 2, cy = vh / 2;
+    if (sx > 4 && sx < vw - 4 && sy > 4 && sy < vh - 4) return null; // on screen
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     let dx = sx - cx, dy = sy - cy;
     const len = Math.hypot(dx, dy) || 1;
     dx /= len; dy /= len;
-    const m = 10;
-    let ax = cx + dx * (cx - m) / Math.max(Math.abs(dx), 0.001);
-    let ay = cy + dy * (cy - m) / Math.max(Math.abs(dy), 0.001);
-    // clamp properly: scale so the point sits on screen bounds
-    const scaleX = dx !== 0 ? (cx - m) / Math.abs(dx) : 1e9;
-    const scaleY = dy !== 0 ? (cy - m) / Math.abs(dy) : 1e9;
+    const scaleX = Math.abs(dx) > 1e-4 ? (x1 - cx) / Math.abs(dx) : 1e9;
+    const scaleY = Math.abs(dy) > 1e-4 ? (y1 - cy) / Math.abs(dy) : 1e9;
     const s = Math.min(scaleX, scaleY);
-    ax = cx + dx * s; ay = cy + dy * s;
+    return { x: cx + dx * s, y: cy + dy * s, ang: Math.atan2(dy, dx) };
+  }
+
+  edgeArrow(ctx, vw, vh, camX, camY, wx, wy, color) {
+    const e = this.edgePoint(vw, vh, camX, camY, wx, wy);
+    if (!e) return;
     ctx.save();
-    ctx.translate(ax, ay);
-    ctx.rotate(Math.atan2(dy, dx));
+    ctx.translate(Math.round(e.x), Math.round(e.y));
+    ctx.rotate(e.ang);
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.moveTo(4, 0); ctx.lineTo(-3, -3); ctx.lineTo(-3, 3);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+
+  // Field Drones follow anything loose that isn't hiding. Mk.I loses Elites
+  // while they're cloaked; Mk.II sees through the cloak.
+  droneTracks(a) {
+    const lv = this.fx.drones;
+    if (!lv || a.state === 'hiding') return false;
+    if (!(a.free || a.state === 'beaming')) return false;
+    if (a.cloaked && lv < 2) return false;
+    return true;
+  }
+
+  droneArrow(ctx, vw, vh, camX, camY, a) {
+    const e = this.edgePoint(vw, vh, camX, camY, a.x, a.y - 6);
+    if (!e) return;
+    const mk2 = this.fx.drones >= 2;
+    const color = mk2 ? TIER_COLORS[a.tier] || '#41f0d8' : '#41f0d8';
+    const dist = Math.hypot(a.x - this.player.x, a.y - this.player.y);
+    // closer targets get a bigger arrow; a slow pulse so it reads as "live"
+    const size = dist < 160 ? 1.25 : dist < 320 ? 1 : 0.8;
+    const pulse = 0.75 + 0.25 * Math.sin(this.time * 6 + a.id);
+    ctx.save();
+    ctx.translate(Math.round(e.x), Math.round(e.y));
+    ctx.rotate(e.ang);
+    ctx.scale(size, size);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#0a0c14';
+    ctx.beginPath();
+    ctx.moveTo(7, 0); ctx.lineTo(-5, -6); ctx.lineTo(-2, 0); ctx.lineTo(-5, 6);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(5, 0); ctx.lineTo(-3, -4); ctx.lineTo(-1, 0); ctx.lineTo(-3, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+    ctx.globalAlpha = 1;
+    if (mk2) {
+      // range readout (1 tile = 1 m) tucked just inside the arrow
+      const m = Math.round(dist / 16);
+      const tx = Math.round(e.x - Math.cos(e.ang) * 12);
+      const ty = Math.round(e.y - Math.sin(e.ang) * 10) + 2;
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#0a0c14';
+      ctx.fillText(`${m}m`, tx + 1, ty + 1);
+      ctx.fillStyle = color;
+      ctx.fillText(`${m}m`, tx, ty);
+    }
+  }
+
+  drawDrones(ctx, camX, camY) {
+    const p = this.player;
+    const blink = Math.floor(this.time * 3) % 2 === 0;
+    for (let i = 0; i < 2; i++) {
+      const a = this.time * 1.7 + i * Math.PI;
+      const x = Math.round(p.x + Math.cos(a) * 11 - camX);
+      const y = Math.round(p.y - 30 - p.z + Math.sin(a) * 3 + Math.sin(this.time * 5 + i) - camY);
+      ctx.globalAlpha = 0.18;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(Math.round(p.x + Math.cos(a) * 11 - camX) - 1, Math.round(p.y - camY), 3, 1);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#141019';
+      ctx.fillRect(x - 3, y - 1, 7, 3);
+      ctx.fillStyle = '#8791a0';
+      ctx.fillRect(x - 2, y, 5, 1);
+      ctx.fillStyle = '#d7dfea';
+      ctx.fillRect(x - 3, y - 2, 2, 1);
+      ctx.fillRect(x + 2, y - 2, 2, 1);
+      ctx.fillStyle = blink === (i === 0) ? '#41f0d8' : '#ff5e6c';
+      ctx.fillRect(x, y, 1, 1);
+    }
   }
 }

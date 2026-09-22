@@ -2,15 +2,22 @@
 //
 //   'buttons'  — floating joystick lower-left, action buttons lower-right.
 //   'gestures' — no buttons. The screen is split down the middle:
-//                LEFT  : drag to walk, flick up to dash, double-tap to sprint.
-//                RIGHT : tap to grab, double-tap for the weapon (net gun),
-//                        flick up to dive, flick down to jump.
+//                LEFT  (legs)  : drag to walk, flick up to jump, double-tap
+//                                for the Noise Maker. Low fences / bales /
+//                                crates are vaulted automatically.
+//                RIGHT (hands) : tap to grab, HOLD to sprint, swipe in ANY
+//                                direction to dive that way (a dash if no
+//                                alien is in reach), double-tap for the net.
+//
+//   Nothing the right thumb does ever interrupts walking, so sprinting and
+//   diving never cost you your stride; the only left-hand tap gesture is the
+//   Noise Maker, which you set off standing next to a hiding spot anyway.
 //
 // Both halves are percentage-sized, so the split follows the screen in
 // portrait and landscape alike.
 //
 // Keyboard fallback (desktop): WASD/arrows + Shift sprint, Space jump,
-// J grab, K dash, L dive, N net, Esc/P pause.
+// J grab, K dash, L dive, N net, B noise maker, Esc/P pause.
 import { initAudio, resumeAudio } from './audio.js';
 import { save } from './save.js';
 
@@ -28,6 +35,7 @@ const FLICK_WINDOW = 200;  // ms of pointer history a flick is measured over
 const FLICK_SPEED = 420;   // px/s minimum
 const FLICK_AXIS = 1.4;    // |dy| must beat |dx| by this much
 const FLICK_RELOCK = 300;  // ms before the same finger may flick again
+const HOLD_MS = 170;       // right thumb held this long (without a flick) = sprint
 
 // Flick distance scales a little with the screen's short side so it feels the
 // same on a phone in landscape as it does in portrait.
@@ -44,13 +52,17 @@ export const input = {
   move: { x: 0, y: 0 },
   mag: 0,
   sprintHeld: false,     // keyboard Shift (hold-to-sprint)
-  sprintToggle: false,   // SPRINT button / left-hand double-tap (toggle)
-  get sprint() { return this.sprintToggle || this.sprintHeld; },
+  sprintToggle: false,   // SPRINT button (buttons mode toggle)
+  sprintHold: 0,         // right-half fingers currently held down (no-buttons mode)
+  holdSpent: false,      // stamina ran dry mid-hold: lift and press again to sprint
+  get sprint() { return this.sprintToggle || this.sprintHeld || (this.sprintHold > 0 && !this.holdSpent); },
   presses: {},           // edge-triggered action flags
+  swipeDir: { x: 0, y: 1 },  // direction of the latest right-half swipe
 };
 
 let controlMode = 'buttons';
 let netAvailable = false;
+let noiseAvailable = false;
 
 export function consumePress(name) {
   if (input.presses[name]) { input.presses[name] = false; return true; }
@@ -69,6 +81,7 @@ export function updateSprintVisual() {
 export function clearInput() {
   input.move.x = 0; input.move.y = 0; input.mag = 0;
   input.sprintHeld = false; input.sprintToggle = false;
+  input.holdSpent = false;
   input.presses = {};
   resetPointers();
   updateSprintVisual();
@@ -95,6 +108,8 @@ function applyHintVisibility() {
   if (hints) hints.classList.toggle('on', controlMode === 'gestures' && save.gestureHints !== false);
   const net = document.getElementById('hint-net');
   if (net) net.classList.toggle('hidden', !netAvailable);
+  const noise = document.getElementById('hint-noise');
+  if (noise) noise.classList.toggle('hidden', !noiseAvailable);
 }
 
 export function refreshHints() { applyHintVisibility(); }
@@ -103,7 +118,44 @@ export function refreshHints() { applyHintVisibility(); }
 
 const tracked = new Map();   // pointerId -> gesture state
 
-function resetPointers() { tracked.clear(); }
+function resetPointers() {
+  for (const p of tracked.values()) endHold(p);
+  tracked.clear();
+  input.sprintHold = 0;
+}
+
+// Right-thumb hold = sprint. Each held finger owns one "hold" and a pixel ring
+// that sits under it so you can see the sprint is live.
+function startHold(p) {
+  if (p.holding) return;
+  p.holding = true;
+  input.sprintHold++;
+  input.holdSpent = false;
+  const controls = document.getElementById('controls');
+  if (controls) {
+    p.ring = document.createElement('div');
+    p.ring.className = 'hold-fx';
+    controls.appendChild(p.ring);
+    moveHold(p);
+  }
+  updateSprintVisual();
+}
+
+function moveHold(p) {
+  if (!p.ring) return;
+  const last = p.samples[p.samples.length - 1];
+  p.ring.style.left = `${last.x}px`;
+  p.ring.style.top = `${last.y}px`;
+}
+
+function endHold(p) {
+  clearTimeout(p.holdTimer);
+  if (p.ring) { p.ring.remove(); p.ring = null; }
+  if (!p.holding) return;
+  p.holding = false;
+  input.sprintHold = Math.max(0, input.sprintHold - 1);
+  updateSprintVisual();
+}
 
 function track(e) {
   const now = performance.now();
@@ -118,6 +170,12 @@ function track(e) {
 
 function sample(p, e) {
   const now = performance.now();
+  // After the thumb has rested, the only anchor left is a stale sample from
+  // before the rest, which made a flick look slow and silently dropped it.
+  // Re-stamp the resting position as "one frame ago" so the flick is measured
+  // from the moment the thumb actually started moving.
+  const prev = p.samples[p.samples.length - 1];
+  if (prev && now - prev.t > 50) p.samples = [{ x: prev.x, y: prev.y, t: now - 16 }];
   p.samples.push({ x: e.clientX, y: e.clientY, t: now });
   // keep one sample older than the window so short flicks still have an anchor
   let cut = 0;
@@ -127,6 +185,22 @@ function sample(p, e) {
   if (cut > 0) p.samples.splice(0, cut);
   p.maxDist = Math.max(p.maxDist, Math.hypot(e.clientX - p.x0, e.clientY - p.y0));
   return now;
+}
+
+// Any-direction flick: returns a unit vector for the rolling window ending at
+// the latest sample, or null. Used by the right thumb (swipe = dive that way).
+function flickAny(p, now) {
+  if (now < p.lockUntil) return null;
+  const last = p.samples[p.samples.length - 1];
+  const anchor = p.samples[0];
+  const dt = (last.t - anchor.t) / 1000;
+  if (dt < 0.016) return null;
+  const dx = last.x - anchor.x;
+  const dy = last.y - anchor.y;
+  const d = Math.hypot(dx, dy);
+  if (d < flickDist) return null;
+  if (d / dt < FLICK_SPEED) return null;
+  return { x: dx / d, y: dy / d };
 }
 
 // Returns 'up' | 'down' | null for the rolling window ending at the latest sample.
@@ -226,10 +300,10 @@ export function setupInput() {
     if (!p) return;
     const now = sample(p, e);
     if (flick(p, now) === 'up') {
-      input.presses.dash = true;
+      input.presses.jump = true;
       armAfterFlick(p, now);
       tapFx(e.clientX, e.clientY, 'swipe');
-      // The stick keeps following the thumb — the dash just fires alongside it,
+      // The stick keeps following the thumb — the hop just fires alongside it,
       // so a flick never interrupts the walk.
     }
   });
@@ -244,10 +318,9 @@ export function setupInput() {
       const now = performance.now();
       if (controlMode === 'gestures' && e.type === 'pointerup' && isTap(p, now)) {
         const near = Math.hypot(e.clientX - lastLeftTapPos.x, e.clientY - lastLeftTapPos.y) < DTAP_SLOP;
-        if (now - lastLeftTap < DTAP_MS && near) {
-          input.sprintToggle = !input.sprintToggle;
-          updateSprintVisual();
-          tapFx(e.clientX, e.clientY, 'toggle');
+        if (now - lastLeftTap < DTAP_MS && near && noiseAvailable) {
+          input.presses.noise = true;
+          tapFx(e.clientX, e.clientY, 'bang');
           lastLeftTap = 0;
         } else {
           lastLeftTap = now;
@@ -265,7 +338,11 @@ export function setupInput() {
   actZone.addEventListener('pointerdown', (e) => {
     initAudio(); resumeAudio();
     if (controlMode !== 'gestures') return;
-    track(e);
+    const p = track(e);
+    // Still down after HOLD_MS and not a flick-in-progress -> sprint until lifted.
+    p.holdTimer = setTimeout(() => {
+      if (tracked.get(e.pointerId) === p) startHold(p);
+    }, HOLD_MS);
     capture(actZone, e);
     e.preventDefault();
   });
@@ -274,9 +351,11 @@ export function setupInput() {
     const p = tracked.get(e.pointerId);
     if (!p || controlMode !== 'gestures') return;
     const now = sample(p, e);
-    const dir = flick(p, now);
+    moveHold(p);
+    const dir = flickAny(p, now);
     if (!dir) return;
-    input.presses[dir === 'up' ? 'dive' : 'jump'] = true;
+    input.swipeDir = dir;
+    input.presses.swipe = true;
     armAfterFlick(p, now);
     tapFx(e.clientX, e.clientY, 'swipe');
   });
@@ -285,6 +364,7 @@ export function setupInput() {
     const p = tracked.get(e.pointerId);
     if (!p) return;
     tracked.delete(e.pointerId);
+    endHold(p);
     if (controlMode !== 'gestures' || e.type !== 'pointerup') return;
     const now = performance.now();
     if (!isTap(p, now)) return;
@@ -326,6 +406,7 @@ export function setupInput() {
   bind('btn-dash', 'dash');
   bind('btn-jump', 'jump');
   bind('btn-net', 'net');
+  bind('btn-noise', 'noise');
 
   // SPRINT is a toggle, not a momentary action
   const sprintBtn = document.getElementById('btn-sprint');
@@ -345,6 +426,7 @@ export function setupInput() {
     KeyL: 'dive', KeyC: 'dive',
     Space: 'jump',
     KeyN: 'net', KeyV: 'net',
+    KeyB: 'noise', KeyE: 'noise',
     Escape: 'pause', KeyP: 'pause',
   };
   window.addEventListener('keydown', (e) => {
@@ -386,18 +468,26 @@ export function setupInput() {
 }
 
 // Cooldown display — mirrored onto the gesture legend so both schemes show it.
-const COOL_HINT = { 'btn-dash': 'hint-dash', 'btn-dive': 'hint-dive', 'btn-net': 'hint-net' };
+// Only touches the DOM when a state actually flips (this runs every frame).
+const coolState = new Map();
 
 export function setButtonCooling(id, cooling) {
+  if (coolState.get(id) === cooling) return;
+  coolState.set(id, cooling);
   const el = document.getElementById(id);
   if (el) el.classList.toggle('cooling', cooling);
-  const hint = document.getElementById(COOL_HINT[id]);
-  if (hint) hint.classList.toggle('cooling', cooling);
 }
 
 export function showNetButton(show) {
   netAvailable = !!show;
   const el = document.getElementById('btn-net');
+  if (el) el.classList.toggle('hidden', !show);
+  applyHintVisibility();
+}
+
+export function showNoiseButton(show) {
+  noiseAvailable = !!show;
+  const el = document.getElementById('btn-noise');
   if (el) el.classList.toggle('hidden', !show);
   applyHintVisibility();
 }

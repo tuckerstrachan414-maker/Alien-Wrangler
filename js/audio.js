@@ -38,12 +38,14 @@ function tone(freq, dur, type = 'square', vol = 0.12, slide = 0, delay = 0) {
   osc.stop(t0 + dur + 0.02);
 }
 
-function noise(dur, vol = 0.1, delay = 0) {
+// White-noise burst with a linear fade. `hp`/`lp` (Hz) optionally band it,
+// which is what makes a typewriter key sound like a clack instead of a hiss.
+function noise(dur, vol = 0.1, delay = 0, hp = 0, lp = 0) {
   const lv = level();
   if (!ctx || lv <= 0) return;
   vol *= lv;
   const t0 = ctx.currentTime + delay;
-  const len = Math.floor(ctx.sampleRate * dur);
+  const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
   const d = buf.getChannelData(0);
   for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / len);
@@ -51,7 +53,10 @@ function noise(dur, vol = 0.1, delay = 0) {
   src.buffer = buf;
   const g = ctx.createGain();
   g.gain.setValueAtTime(vol, t0);
-  src.connect(g).connect(ctx.destination);
+  let node = src;
+  if (hp) { const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp; node.connect(f); node = f; }
+  if (lp) { const f = ctx.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = lp; node.connect(f); node = f; }
+  node.connect(g).connect(ctx.destination);
   src.start(t0);
 }
 
@@ -74,4 +79,18 @@ export const sfx = {
   win:     () => { [440, 550, 660, 880].forEach((f, i) => tone(f, 0.14, 'square', 0.09, 0, i * 0.09)); },
   click:   () => tone(600, 0.04, 'square', 0.05),
   ufo:     () => { tone(60, 1.2, 'sawtooth', 0.07, 30); tone(48, 1.2, 'sawtooth', 0.05, 20, 0.05); },
+  // Noise Maker: sharp crack, a chest-thump, then a faint ear-ring
+  bang:    () => {
+    noise(0.05, 0.4, 0, 1800);
+    noise(0.45, 0.32, 0.01, 0, 1400);
+    tone(95, 0.45, 'triangle', 0.3, -60, 0.005);
+    tone(3100, 0.9, 'sine', 0.018, -200, 0.12);
+  },
+  // typewriter (mission brief)
+  type:    () => {
+    noise(0.018, 0.07 + Math.random() * 0.03, 0, 1400 + Math.random() * 900, 6500);
+    tone(1500 + Math.random() * 500, 0.012, 'square', 0.012);
+  },
+  typeReturn: () => { noise(0.1, 0.05, 0, 700, 3000); tone(2100, 0.2, 'sine', 0.04, 0, 0.06); },
+  stamp:   () => { noise(0.1, 0.25, 0, 0, 900); tone(85, 0.22, 'triangle', 0.22, -35); },
 };

@@ -3,7 +3,7 @@ import { loadPngProps } from './data/pngProps.js';
 import { getMission } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
 import {
-  setupInput, consumePress, clearInput, showNetButton,
+  setupInput, consumePress, clearInput, showNetButton, showNoiseButton,
   setControlMode, refreshHints,
 } from './input.js';
 import { Game } from './game.js';
@@ -87,6 +87,7 @@ const stamBar = document.getElementById('stamina-bar');
 let state = 'menu';    // menu | play | paused
 let scale = 4;
 let viewW = 200, viewH = 400;
+let afterResize = () => {};   // replaced once the game exists (edge-arrow insets)
 
 // low-res buffer the world renders into, blitted up to the real canvas
 const buf = document.createElement('canvas');
@@ -105,6 +106,7 @@ function resize() {
   buf.width = viewW; buf.height = viewH;
   bctx.imageSmoothingEnabled = false;
   ctx.imageSmoothingEnabled = false;
+  afterResize();
 }
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 250));
@@ -112,13 +114,37 @@ resize();
 
 const game = new Game(assets);
 
+// Screen-edge arrows (van, Field Drones, endgame) must stay out from under the
+// HUD strip and the notch / home indicator. Measure both in CSS px and convert
+// to low-res buffer px.
+const safeProbe = document.createElement('div');
+safeProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;' +
+  'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+document.body.appendChild(safeProbe);
+function measureInsets() {
+  const k = (Math.min(3, window.devicePixelRatio || 1)) / scale;   // css px -> buffer px
+  const cs = getComputedStyle(safeProbe);
+  const safe = (side) => parseFloat(cs[`padding${side}`]) || 0;
+  const hudTop = document.getElementById('hud-top');
+  const hudBottom = hudTop && !hud.classList.contains('hidden') ? hudTop.getBoundingClientRect().bottom : safe('Top') + 40;
+  game.insets = {
+    top: Math.ceil(hudBottom * k) + 2,
+    right: Math.ceil(safe('Right') * k) + 2,
+    bottom: Math.ceil(safe('Bottom') * k) + 2,
+    left: Math.ceil(safe('Left') * k) + 2,
+  };
+}
+afterResize = measureInsets;
+
 function enterMission(mission) {
   ui.clear();
   hud.classList.remove('hidden');
   controls.classList.remove('hidden');
   game.startMission(mission);
   showNetButton(game.fx.netgun > 0);
+  showNoiseButton(game.fx.noisemaker > 0);
   clearInput();
+  measureInsets();
   state = 'play';
 }
 
