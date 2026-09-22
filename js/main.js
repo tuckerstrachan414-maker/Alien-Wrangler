@@ -1,8 +1,11 @@
 import { buildTiles, buildActors, buildVan, buildUfo, T } from './data/sprites.js';
 import { loadPngProps } from './data/pngProps.js';
-import { getMission, gearEffects } from './data/missions.js';
+import { getMission } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
-import { setupInput, consumePress, clearInput, showNetButton } from './input.js';
+import {
+  setupInput, consumePress, clearInput, showNetButton,
+  setControlMode, refreshHints,
+} from './input.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
 
@@ -109,48 +112,65 @@ resize();
 
 const game = new Game(assets);
 
+function enterMission(mission) {
+  ui.clear();
+  hud.classList.remove('hidden');
+  controls.classList.remove('hidden');
+  game.startMission(mission);
+  showNetButton(game.fx.netgun > 0);
+  clearInput();
+  state = 'play';
+}
+
+function leaveMission() {
+  state = 'menu';
+  hud.classList.add('hidden');
+  controls.classList.add('hidden');
+  clearInput();
+}
+
 const ui = new UI(uiRoot, assets, {
-  startMission(n) {
-    const m = getMission(n);
-    ui.clear();
-    hud.classList.remove('hidden');
-    controls.classList.remove('hidden');
-    game.startMission(m);
-    showNetButton(gearEffects(save.gear).netgun > 0);
-    clearInput();
-    state = 'play';
-  },
+  startMission(n) { enterMission(getMission(n)); },
+  startSandbox(mission) { enterMission(mission); },
   resume() {
     ui.clear();
     clearInput();
     state = 'play';
   },
   restart() {
-    ui.clear();
-    game.startMission(game.mission);
-    clearInput();
-    state = 'play';
+    enterMission(game.mission);
+  },
+  abandonMission() {
+    if (!game.mission) { leaveMission(); ui.showTitle(); return; }
+    game.abandon();
   },
   quitToMenu() {
-    state = 'menu';
     game.running = false;
-    hud.classList.add('hidden');
-    controls.classList.add('hidden');
+    leaveMission();
     ui.showTitle();
+  },
+  currentMission() { return game.mission; },
+  applySettings() {
+    setControlMode(save.controlMode);
+    refreshHints();
   },
 });
 
 game.onEnd = (r) => {
-  save.cash += r.pay;
-  if (r.cleared && r.mission.id >= save.missionsCleared) {
-    save.missionsCleared = r.mission.id + 1;
+  if (!r.mission.sandbox) {
+    save.cash += r.pay;
+    if (r.abandoned) save.cash = Math.max(0, save.cash - (r.fee || 0));
+    if (r.cleared && !r.abandoned && r.mission.id >= save.missionsCleared) {
+      save.missionsCleared = r.mission.id + 1;
+    }
+    if (!r.abandoned) {
+      save.bestPay[r.mission.id] = Math.max(save.bestPay[r.mission.id] || 0, r.pay);
+    }
+    persist();
   }
-  save.bestPay[r.mission.id] = Math.max(save.bestPay[r.mission.id] || 0, r.pay);
-  persist();
-  state = 'menu';
-  hud.classList.add('hidden');
-  controls.classList.add('hidden');
-  setTimeout(() => ui.showResults(r), 650);
+  leaveMission();
+  // an abandon is a deliberate exit — no need to sit on the frozen field
+  setTimeout(() => ui.showResults(r), r.abandoned ? 0 : 650);
 };
 
 document.getElementById('btn-pause').addEventListener('pointerdown', (e) => {
@@ -174,15 +194,91 @@ function fmtTime(t) {
 }
 
 function updateHud() {
-  timerText.textContent = game.beamPhase ? '0:00' : fmtTime(game.timer);
-  hudTimer.classList.toggle('urgent', game.timer < 30 || game.beamPhase);
+  const endless = !!game.mission.endless;
+  timerText.textContent = endless ? 'FREE' : game.beamPhase ? '0:00' : fmtTime(game.timer);
+  hudTimer.classList.toggle('urgent', !endless && (game.timer < 30 || game.beamPhase));
   scoreText.textContent = `${game.captured}/${game.totalAliens}`;
   cashText.textContent = `${game.projectedPay()}`;
-  warnEl.classList.toggle('hidden', !(game.timer <= 30 && game.timer > 26.5 && game.phase === 'play'));
+  warnEl.classList.toggle('hidden', !(!endless && game.timer <= 30 && game.timer > 26.5 && game.phase === 'play'));
   const p = game.player;
   const pct = Math.round(p.stamina / p.fx.staminaMax * 100);
   stamBar.style.width = `${pct}%`;
   stamBar.classList.toggle('low', pct < 25);
+}
+
+/* ---------------- animated menu backdrop ----------------
+   Drawn into the same low-res buffer the world uses, so the night sky behind
+   the menus is the same chunky pixel art as the game. */
+const STARS = Array.from({ length: 110 }, () => ({
+  x: Math.random(), y: Math.random(),
+  phase: Math.random() * Math.PI * 2,
+  size: Math.random() < 0.18 ? 2 : 1,
+}));
+let menuT = 0;
+
+function ridge(y, amp, wave, color) {
+  bctx.fillStyle = color;
+  bctx.beginPath();
+  bctx.moveTo(0, viewH);
+  for (let x = 0; x <= viewW; x += 3) {
+    bctx.lineTo(x, y + Math.sin(x * wave) * amp + Math.sin(x * wave * 0.37 + 1.7) * amp * 0.7);
+  }
+  bctx.lineTo(viewW, viewH);
+  bctx.closePath();
+  bctx.fill();
+}
+
+function drawMenuBackdrop(dt) {
+  menuT += dt;
+  const w = viewW, h = viewH;
+
+  const sky = bctx.createLinearGradient(0, 0, 0, h);
+  sky.addColorStop(0, '#0e1433');
+  sky.addColorStop(0.5, '#0b0f20');
+  sky.addColorStop(1, '#070911');
+  bctx.fillStyle = sky;
+  bctx.fillRect(0, 0, w, h);
+
+  for (const s of STARS) {
+    bctx.globalAlpha = 0.35 + 0.5 * (0.5 + 0.5 * Math.sin(menuT * 1.7 + s.phase));
+    bctx.fillStyle = s.size > 1 ? '#e6efff' : '#9db2da';
+    bctx.fillRect((s.x * w) | 0, (s.y * h * 0.72) | 0, s.size, s.size);
+  }
+  bctx.globalAlpha = 1;
+
+  // moon, low and to one side
+  const mx = (w * 0.76) | 0, my = (h * 0.13) | 0;
+  bctx.globalAlpha = 0.16;
+  bctx.fillStyle = '#9fd8ff';
+  bctx.beginPath(); bctx.arc(mx, my, 16, 0, Math.PI * 2); bctx.fill();
+  bctx.globalAlpha = 1;
+  bctx.fillStyle = '#dfe9f5';
+  bctx.beginPath(); bctx.arc(mx, my, 9, 0, Math.PI * 2); bctx.fill();
+  bctx.fillStyle = '#c3cfe0';
+  bctx.fillRect(mx - 4, my - 3, 3, 3);
+  bctx.fillRect(mx + 2, my + 1, 2, 2);
+  bctx.fillRect(mx - 1, my + 4, 2, 2);
+
+  // a UFO trawling slowly across, dragging a faint beam
+  const span = w + 90;
+  const ux = ((menuT * 11) % span) - 45;
+  const uy = h * 0.3 + Math.sin(menuT * 0.9) * 3;
+  const gy = h * 0.78;
+  const grad = bctx.createLinearGradient(0, uy, 0, gy);
+  grad.addColorStop(0, 'rgba(120, 240, 255, 0.16)');
+  grad.addColorStop(1, 'rgba(120, 240, 255, 0)');
+  bctx.fillStyle = grad;
+  bctx.beginPath();
+  bctx.moveTo(ux - 5, uy + 6);
+  bctx.lineTo(ux + 5, uy + 6);
+  bctx.lineTo(ux + 16, gy);
+  bctx.lineTo(ux - 16, gy);
+  bctx.closePath();
+  bctx.fill();
+  bctx.drawImage(assets.ufo, Math.round(ux - 24), Math.round(uy - 11));
+
+  ridge(h * 0.8, 7, 0.02, '#111d2c');
+  ridge(h * 0.9, 5, 0.035, '#080c13');
 }
 
 let last = performance.now();
@@ -197,16 +293,22 @@ function frame(now) {
     if (game.running) updateHud();
   }
 
-  if ((state === 'play' || state === 'paused') && game.map) {
-    game.render(bctx, viewW, viewH);
+  const blit = () => {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(buf, 0, 0, viewW, viewH, 0, 0, viewW * scale, viewH * scale);
+  };
+
+  if ((state === 'play' || state === 'paused') && game.map) {
+    game.render(bctx, viewW, viewH);
+    blit();
   } else {
-    ctx.fillStyle = '#0a0c14';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    drawMenuBackdrop(dt);
+    blit();
   }
 }
 
+setControlMode(save.controlMode);
+refreshHints();
 ui.showTitle();
 requestAnimationFrame(frame);
 

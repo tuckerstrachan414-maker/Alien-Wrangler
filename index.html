@@ -17,14 +17,15 @@
   <!-- In-game HUD (top) -->
   <div id="hud" class="hidden">
     <div id="hud-top">
+      <button class="hud-pill hud-btn" id="btn-pause" aria-label="Pause"><span class="pause-glyph"></span></button>
       <div class="hud-pill" id="hud-timer">
         <span class="hud-ico" id="ico-ufo"></span><span id="timer-text">2:30</span>
       </div>
       <div class="hud-pill" id="hud-score">
         <span class="hud-ico" id="ico-alien"></span><span id="score-text">0/5</span>
       </div>
+      <div class="hud-pill hidden" id="hud-sprint">SPRINT</div>
       <div class="hud-pill" id="hud-cash"><span class="hud-ico" id="ico-coin"></span><span id="cash-text">0</span></div>
-      <button class="hud-pill hud-btn" id="btn-pause">| |</button>
     </div>
     <div id="hud-warning" class="hidden">UFO INBOUND</div>
     <div id="stamina-wrap"><div id="stamina-bar"></div></div>
@@ -32,8 +33,24 @@
 
   <!-- Touch controls -->
   <div id="controls" class="hidden">
+    <!-- Left half: movement (drag to walk, flick up to dash, double-tap to sprint) -->
     <div id="joy-zone">
       <div id="joy-base" class="hidden"><div id="joy-knob"></div></div>
+    </div>
+    <!-- Right half: actions. Only live in no-buttons mode. -->
+    <div id="act-zone"></div>
+    <div id="gesture-hints">
+      <div class="ghint-col">
+        <div class="ghint">DRAG <b>MOVE</b></div>
+        <div class="ghint" id="hint-dash">FLICK UP <b>DASH</b></div>
+        <div class="ghint" id="hint-sprint">2-TAP <b>SPRINT</b></div>
+      </div>
+      <div class="ghint-col">
+        <div class="ghint" id="hint-grab">TAP <b>GRAB</b></div>
+        <div class="ghint hidden" id="hint-net">2-TAP <b>NET</b></div>
+        <div class="ghint" id="hint-dive">FLICK UP <b>DIVE</b></div>
+        <div class="ghint" id="hint-jump">FLICK DOWN <b>JUMP</b></div>
+      </div>
     </div>
     <div id="btn-zone">
       <button class="act-btn" id="btn-grab">GRAB</button>

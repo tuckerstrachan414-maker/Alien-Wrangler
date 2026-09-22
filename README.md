@@ -23,14 +23,51 @@ fullscreen play with no browser bars. Works in both **portrait and landscape** �
 rotate the phone and the controls and camera adapt (landscape shows a wider strip of
 the map at the same zoom).
 
+## 📺 Menus
+
+- **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
+- **SETTINGS** — sound on/off, SFX volume, control scheme, gesture hints, and save data.
+- **SANDBOX** — free play. Pick any map, any alien roster, any time limit (including **no limit**,
+  so the UFO never comes) and any gear level, with everything unlocked. Nothing is paid out and
+  nothing is written to your save — it's for testing and messing around.
+
 ## 🎮 Controls (iPhone)
+
+Two schemes, switchable any time in **Settings** (even mid-mission, from the pause menu).
+Both work in portrait and landscape.
+
+### Buttons mode (default)
 
 | Zone | Control |
 |---|---|
 | Left thumb | Floating joystick to move |
 | Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) |
 
+### No-buttons mode
+
+The screen splits down the middle — no on-screen buttons at all.
+
+| Half | Gesture | Action |
+|---|---|---|
+| Left | Drag anywhere | Move (the stick spawns under your thumb) |
+| Left | Flick **up** | Dash |
+| Left | Double-tap | Toggle sprint (a SPRINT pill shows in the HUD) |
+| Right | Tap | Grab |
+| Right | Double-tap | Fire the net gun (needs the Net Gun) |
+| Right | Flick **up** | Dive |
+| Right | Flick **down** | Jump |
+
+A flick has to be fast and mostly vertical, so walking your thumb upward to head north
+never trips a dash or a dive. A small legend in the bottom corners reminds you of the
+gestures and dims when an action is on cooldown — turn it off in Settings once you know them.
+
 Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, N net, P pause.
+
+## ⏸️ Pausing
+
+**| |** in the top-left corner pauses. From there you can resume, restart the mission,
+open Settings, or **abandon the mission** — which forfeits the payout *and* costs a
+cleanup fee of 25% of the mission's base pay, so it takes two taps to confirm.
 
 ## 🛸 How a mission works
 
@@ -90,7 +127,9 @@ Pure HTML5 canvas + ES modules. No build step, no dependencies, no external netw
 every sprite is generated from pixel grids in `js/data/sprites.js` at boot, and the UI
 uses the **Press Start 2P** pixel font (OFL 1.1, base64-embedded in `css/font.css`;
 license in `fonts/OFL.txt`). The whole UI is styled with beveled, notched-corner pixel
-frames to match the game art, and adapts to portrait or landscape.
+frames to match the game art, and adapts to portrait or landscape. The menus sit over an
+animated pixel night sky (stars, moon and a drifting UFO) drawn into the same low-res
+buffer the game world renders to.
 
 ```
 index.html          shell + HUD + touch controls
@@ -99,12 +138,12 @@ js/main.js          boot, game loop, integer-scaled low-res renderer
 js/game.js          mission controller, capture/deposit, UFO beam, rendering
 js/entities.js      player movement + alien AI (hide / run / attack)
 js/nav.js           nav grid, BFS pathfinding, collision
-js/input.js         floating joystick, buttons, keyboard fallback
-js/ui.js            title / missions / shop / results / pause screens
+js/input.js         joystick + buttons, split-screen gesture scheme, keyboard fallback
+js/ui.js            title / play hub / missions / shop / settings / sandbox / results / pause
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
-js/data/maps.js     the three maps
-js/data/missions.js mission ladder, alien stats, gear catalog
-js/save.js          localStorage save
+js/data/maps.js     the five maps
+js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog
+js/save.js          localStorage save (progress + settings + sandbox loadout)
 js/audio.js         WebAudio synth SFX
 ```
 
