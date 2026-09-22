@@ -124,7 +124,17 @@ html, body {
   font-size: 9px;
   min-width: 34px;
   justify-content: center;
+  border: none;
+  padding: 6px 9px;
 }
+/* two pixel bars, so the pause glyph reads at any font */
+.pause-glyph { display: block; width: 10px; height: 12px; position: relative; }
+.pause-glyph::before, .pause-glyph::after {
+  content: ""; position: absolute; top: 0; width: 3px; height: 12px; background: var(--ink);
+}
+.pause-glyph::before { left: 0; }
+.pause-glyph::after { right: 0; }
+#hud-sprint { color: var(--cash); font-size: 8px; letter-spacing: 1px; }
 #hud-warning {
   margin: 10px auto 0;
   width: fit-content;
@@ -264,6 +274,85 @@ html, body {
 #btn-net    { width: 38px; height: 38px; right: 114px; bottom: 8px;  font-size: 6px; }
 #btn-net::before { background-color: #3a3316; }
 
+/* ---------- No-buttons (gesture) mode ---------- */
+/* The play area splits down the middle: left half walks, right half acts.
+   Both halves start below the HUD strip so the pause button stays reachable. */
+#act-zone {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: calc(var(--safe-top) + 44px);
+  bottom: 0;
+  width: 50%;
+  pointer-events: auto;
+  touch-action: none;
+}
+#controls.mode-gestures #btn-zone { display: none; }
+#controls.mode-gestures #act-zone { display: block; }
+#controls.mode-gestures #joy-zone {
+  left: 0;
+  width: 50%;
+  top: calc(var(--safe-top) + 44px);
+  bottom: 0;
+  height: auto;
+}
+/* faint seam so the split is discoverable without being loud */
+#controls.mode-gestures::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(var(--safe-top) + 60px);
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: linear-gradient(180deg, rgba(110,194,255,0.14), rgba(110,194,255,0.03));
+  pointer-events: none;
+}
+
+/* touch feedback pips */
+.tap-fx {
+  position: absolute;
+  width: 26px; height: 26px;
+  margin: -13px 0 0 -13px;
+  pointer-events: none;
+  clip-path: var(--pixel-circle);
+  background: rgba(110, 194, 255, 0.55);
+  animation: tapfx 0.28s steps(4) forwards;
+}
+.tap-fx.double { background: rgba(255, 215, 94, 0.6); }
+.tap-fx.swipe { background: rgba(89, 217, 140, 0.55); }
+.tap-fx.toggle { background: rgba(255, 215, 94, 0.5); }
+@keyframes tapfx {
+  from { transform: scale(0.5); opacity: 0.9; }
+  to { transform: scale(1.6); opacity: 0; }
+}
+
+/* gesture legend */
+#gesture-hints {
+  display: none;
+  position: absolute;
+  left: calc(var(--safe-left) + 10px);
+  right: calc(var(--safe-right) + 10px);
+  bottom: calc(var(--safe-bottom) + 10px);
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+#gesture-hints.on { display: flex; }
+.ghint-col { display: flex; flex-direction: column; gap: 4px; }
+.ghint-col:last-child { align-items: flex-end; }
+.ghint {
+  font-size: 6px;
+  line-height: 1.4;
+  letter-spacing: 0;
+  color: #64769b;
+  background: rgba(10, 13, 22, 0.55);
+  padding: 4px 5px;
+  white-space: nowrap;
+}
+.ghint b { color: #9fb6dd; font-weight: 400; }
+.ghint.cooling { opacity: 0.35; }
+
 /* ---------- Menu screens ---------- */
 #ui-root { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
 .screen {
@@ -275,9 +364,10 @@ html, body {
   align-items: center;
   overflow-y: auto;
   padding: calc(var(--safe-top) + 20px) calc(var(--safe-right) + 18px) calc(var(--safe-bottom) + 22px) calc(var(--safe-left) + 18px);
+  /* semi-transparent so the animated starfield on the canvas shows through */
   background:
-    repeating-linear-gradient(0deg, rgba(0,0,0,0.14) 0 2px, transparent 2px 4px),
-    radial-gradient(120% 90% at 50% 0%, #141a2e 0%, #0a0c14 72%);
+    repeating-linear-gradient(0deg, rgba(0,0,0,0.16) 0 2px, transparent 2px 4px),
+    radial-gradient(120% 90% at 50% 0%, rgba(20,26,46,0.72) 0%, rgba(10,12,20,0.88) 72%);
   touch-action: pan-y;
 }
 .screen.dim {
@@ -390,6 +480,128 @@ html, body {
   margin-top: 14px;
 }
 
+/* ---------- menu chrome ---------- */
+.menu-btn .sub {
+  display: block;
+  font-size: 6.5px;
+  line-height: 1.8;
+  color: #8fa0c4;
+  margin-top: 6px;
+  letter-spacing: 0;
+}
+.menu-btn.primary .sub { color: #7fc79c; }
+.menu-btn.wide { width: min(320px, 90vw); }
+
+.title-badge {
+  font-size: 6.5px;
+  letter-spacing: 2px;
+  color: #6b7ca3;
+  border-top: 2px solid rgba(110,194,255,0.18);
+  border-bottom: 2px solid rgba(110,194,255,0.18);
+  padding: 5px 12px;
+  margin-bottom: 14px;
+}
+.menu-spacer { height: 10px; }
+.section-label {
+  width: min(320px, 90vw);
+  font-size: 7px;
+  letter-spacing: 2px;
+  color: var(--accent);
+  margin: 18px 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 2px solid rgba(110,194,255,0.2);
+}
+
+/* labelled row inside a panel: name on the left, control on the right */
+.opt-row {
+  width: min(320px, 90vw);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--panel);
+  padding: 10px 11px;
+  margin-bottom: 8px;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+.opt-row .opt-name { font-size: 8px; line-height: 1.5; }
+.opt-row .opt-name small { display: block; font-size: 6.5px; color: #8494b8; margin-top: 5px; line-height: 1.7; }
+.opt-row .opt-ctl { display: flex; align-items: center; gap: 6px; flex: none; }
+
+.step-btn {
+  width: 28px; height: 28px;
+  background: #1b2338;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  border: none;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+.step-btn:active { background: #2f4a6e; }
+.step-btn:disabled { opacity: 0.3; }
+.toggle-btn { width: 56px; font-size: 9px; letter-spacing: 1px; }
+.toggle-btn.on { background: #1c3a2a; color: var(--ok); }
+.toggle-btn.off { background: #3a1418; color: var(--danger); }
+.step-val { min-width: 42px; text-align: center; font-size: 9px; color: var(--cash); }
+.step-val.wide { min-width: 62px; }
+
+.meter { display: flex; gap: 2px; }
+.meter i { width: 8px; height: 14px; background: #2a3350; display: block; }
+.meter i.on { background: var(--accent); }
+
+/* selectable chips (maps, time limits, control modes) */
+.chip-grid {
+  width: min(320px, 90vw);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.chip {
+  flex: 1 1 46%;
+  padding: 10px 7px;
+  background: #161c2b;
+  color: #a9b8d6;
+  font-family: inherit;
+  font-size: 7.5px;
+  line-height: 1.5;
+  text-align: center;
+  border: none;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+.chip.narrow { flex: 1 1 28%; }
+.chip.on {
+  background: #1c3a2a;
+  color: var(--ok);
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-lo), inset -2px -2px 0 0 var(--bevel-hi);
+}
+.chip small { display: block; font-size: 6px; color: #7b8bb0; margin-top: 4px; }
+.chip.on small { color: #6fae8a; }
+
+.warn-note {
+  width: min(320px, 90vw);
+  font-size: 6.5px;
+  line-height: 1.9;
+  color: #ffb36b;
+  background: rgba(60, 34, 10, 0.55);
+  padding: 8px 10px;
+  margin: 4px 0 8px;
+  text-align: center;
+}
+
 /* ---------- Landscape layout ---------- */
 @media (orientation: landscape) {
   #hud-top { padding-top: calc(var(--safe-top) + 6px); gap: 6px; }
@@ -402,6 +614,18 @@ html, body {
     right: calc(var(--safe-right) + 12px);
     bottom: calc(var(--safe-bottom) + 10px);
   }
+
+  /* gesture mode keeps the true half/half split, just tucked under a
+     shorter HUD strip */
+  #act-zone,
+  #controls.mode-gestures #joy-zone { top: calc(var(--safe-top) + 36px); }
+  #controls.mode-gestures #joy-zone { width: 50%; height: auto; }
+  #controls.mode-gestures::after { top: calc(var(--safe-top) + 50px); }
+  #gesture-hints { bottom: calc(var(--safe-bottom) + 6px); }
+  .ghint { font-size: 5.5px; padding: 3px 5px; }
+
+  .opt-row { padding: 8px 10px; margin-bottom: 6px; }
+  .section-label { margin: 12px 0 6px; }
 
   .screen { padding-top: calc(var(--safe-top) + 12px); flex-direction: column; }
   .game-title { font-size: 20px; margin: 6px 0 6px; }

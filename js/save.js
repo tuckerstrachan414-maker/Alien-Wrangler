@@ -7,15 +7,43 @@ const DEFAULT = {
   totalCaptured: 0,
   bestPay: {},             // missionId -> best payout
   muted: false,
+  sfxVolume: 100,          // 0..100 master SFX level
+  controlMode: 'buttons',  // 'buttons' | 'gestures'
+  gestureHints: true,      // show the gesture legend in no-buttons mode
+  sandbox: {               // free-play loadout, remembered between sessions
+    map: 'playground',
+    aliens: { grunt: 2, scout: 1, trooper: 0, elite: 0 },
+    time: 180,             // seconds, or 0 for no time limit
+    gear: {},
+  },
 };
 
-export const save = { ...DEFAULT };
+const clone = (o) => JSON.parse(JSON.stringify(o));
+
+export const save = clone(DEFAULT);
+
+// Old saves predate the settings/sandbox blocks, so fill in anything missing
+// instead of trusting whatever shape came out of localStorage.
+function normalize() {
+  if (typeof save.sfxVolume !== 'number' || !isFinite(save.sfxVolume)) save.sfxVolume = 100;
+  save.sfxVolume = Math.max(0, Math.min(100, Math.round(save.sfxVolume / 25) * 25));
+  if (save.controlMode !== 'gestures') save.controlMode = 'buttons';
+  save.gestureHints = save.gestureHints !== false;
+  const sb = (save.sandbox && typeof save.sandbox === 'object') ? save.sandbox : {};
+  save.sandbox = {
+    map: typeof sb.map === 'string' ? sb.map : DEFAULT.sandbox.map,
+    aliens: { ...DEFAULT.sandbox.aliens, ...(sb.aliens || {}) },
+    time: typeof sb.time === 'number' ? sb.time : DEFAULT.sandbox.time,
+    gear: { ...(sb.gear || {}) },
+  };
+}
 
 export function loadSave() {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) Object.assign(save, DEFAULT, JSON.parse(raw));
+    if (raw) Object.assign(save, clone(DEFAULT), JSON.parse(raw));
   } catch (e) { /* fresh save */ }
+  normalize();
   return save;
 }
 
@@ -25,6 +53,6 @@ export function persist() {
 
 export function resetSave() {
   Object.keys(save).forEach(k => delete save[k]);
-  Object.assign(save, JSON.parse(JSON.stringify(DEFAULT)));
+  Object.assign(save, clone(DEFAULT));
   persist();
 }

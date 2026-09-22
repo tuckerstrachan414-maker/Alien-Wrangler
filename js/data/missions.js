@@ -90,6 +90,50 @@ export function getMission(n) {
   return n < MISSIONS.length ? MISSIONS[n] : overtimeMission(n);
 }
 
+// Walking out on a contract costs you: the agency keeps a cleanup fee worth a
+// quarter of the mission's base pay, and you bank nothing for the trip.
+export function abandonFee(mission) {
+  if (!mission || mission.sandbox) return 0;
+  return Math.round(mission.pay * 0.25);
+}
+
+/* ------------------------- SANDBOX ------------------------- */
+// Free play: any map, any roster, any loadout, no payout and no save changes.
+
+export const MAP_LIST = [
+  { id: 'playground', name: 'Sunny Pines Playground', note: 'Open ground, easy sightlines' },
+  { id: 'farmhouse', name: 'Hollow Creek Farm', note: 'Tall corn, lots of cover' },
+  { id: 'shipyard', name: 'Rust Harbor Shipyard', note: 'Container maze' },
+  { id: 'neighborhood', name: 'Maple Street', note: 'Night + noise meter' },
+  { id: 'tropical', name: 'Isla Verde', note: 'Jungle and a volcano' },
+];
+
+export const SANDBOX_TIMES = [120, 180, 300, 600, 0];   // 0 = no time limit
+
+export function sandboxMission(cfg) {
+  const aliens = {};
+  for (const [tier, n] of Object.entries(cfg.aliens || {})) if (n > 0) aliens[tier] = n;
+  const map = MAP_LIST.some(m => m.id === cfg.map) ? cfg.map : MAP_LIST[0].id;
+  return {
+    id: -1,
+    map,
+    name: 'Sandbox',
+    desc: '',
+    aliens,
+    time: cfg.time > 0 ? cfg.time : 9999,
+    endless: !(cfg.time > 0),
+    pay: 0,
+    escapeCost: 0,
+    sandbox: true,
+    gear: { ...(cfg.gear || {}) },
+  };
+}
+
+export function gearMaxLevel(id) {
+  const g = GEAR.find(x => x.id === id);
+  return g ? g.levels.length : 0;
+}
+
 /* ------------------------- EQUIPMENT ------------------------- */
 // Each item: levels with price + effect. Effects read by game via gearVal().
 

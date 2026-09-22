@@ -1,6 +1,6 @@
 import { TILE } from './data/sprites.js';
 import { MAP_BUILDERS } from './data/maps.js';
-import { gearEffects, ALIEN_STATS } from './data/missions.js';
+import { gearEffects, ALIEN_STATS, abandonFee } from './data/missions.js';
 import { buildNav, collide } from './nav.js';
 import { Player, Alien } from './entities.js';
 import { input, consumePress, setButtonCooling } from './input.js';
@@ -18,7 +18,8 @@ export class Game {
 
   startMission(mission) {
     this.mission = mission;
-    this.fx = gearEffects(save.gear);
+    // Sandbox runs carry their own loadout; contracts use what you own.
+    this.fx = gearEffects(mission.gear || save.gear);
     this.map = MAP_BUILDERS[mission.map](this.assets);
     this.nav = buildNav(this.map);
     this.hideSpots = this.map.hideSpots;
@@ -275,7 +276,7 @@ export class Game {
       for (const a of p.carried) {
         a.state = 'deposited';
         this.captured++;
-        save.totalCaptured++;
+        if (!this.mission.sandbox) save.totalCaptured++;
       }
       sfx.deposit(); sfx.cash();
       this.popup(this.vanDoor.x, this.vanDoor.y - 24, `+${p.carried.length} SECURED`, '#59d98c');
@@ -283,8 +284,8 @@ export class Game {
       p.carried.length = 0;
     }
 
-    // mission clock
-    if (this.phase === 'play') {
+    // mission clock (sandbox runs with no time limit never call the UFO in)
+    if (this.phase === 'play' && !this.mission.endless) {
       this.timer -= dt;
       if (this.timer <= 30.05 && this.timer + dt > 30.05) sfx.alert();
       if (this.timer <= 0) {
@@ -431,7 +432,9 @@ export class Game {
     this.fines++;
     this.shake = 6;
     sfx.alert();
-    this.announce(`NEIGHBORS WOKE UP!  -$${this.mission.escapeCost}`, 2.4);
+    this.announce(this.mission.escapeCost
+      ? `NEIGHBORS WOKE UP!  -$${this.mission.escapeCost}`
+      : 'NEIGHBORS WOKE UP!', 2.4);
     for (const h of this.homes) h.alertT = 1.8;
     for (const a of this.aliens) a.flush(this);   // everyone scatters
   }
@@ -455,6 +458,21 @@ export class Game {
     return Math.max(0, m.pay - (this.escaped + this.fines) * m.escapeCost);
   }
 
+  // Walking out early: no payout at all, plus the agency's cleanup fee.
+  abandon() {
+    if (!this.running) return;
+    this.running = false;
+    const m = this.mission;
+    sfx.fail();
+    const results = {
+      mission: m, captured: this.captured, escaped: this.escaped,
+      total: this.totalAliens, basePay: m.pay, deduction: 0, pay: 0,
+      cleared: false, fines: this.fines, abandoned: true,
+      fee: abandonFee(m),
+    };
+    if (this.onEnd) this.onEnd(results);
+  }
+
   finish() {
     if (!this.running) return;
     this.running = false;
@@ -466,7 +484,7 @@ export class Game {
     const results = {
       mission: m, captured: this.captured, escaped: this.escaped,
       total: this.totalAliens, basePay: m.pay, deduction, pay, cleared,
-      fines: this.fines,
+      fines: this.fines, abandoned: false, fee: 0,
     };
     if (this.onEnd) this.onEnd(results);
   }

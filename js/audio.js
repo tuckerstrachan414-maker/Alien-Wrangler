@@ -14,8 +14,17 @@ export function resumeAudio() {
   if (ctx && ctx.state === 'suspended') ctx.resume();
 }
 
+// Master SFX level from the settings screen (0..100 -> 0..1).
+function level() {
+  if (save.muted) return 0;
+  const v = typeof save.sfxVolume === 'number' ? save.sfxVolume : 100;
+  return Math.max(0, Math.min(100, v)) / 100;
+}
+
 function tone(freq, dur, type = 'square', vol = 0.12, slide = 0, delay = 0) {
-  if (!ctx || save.muted) return;
+  const lv = level();
+  if (!ctx || lv <= 0) return;
+  vol *= lv;
   const t0 = ctx.currentTime + delay;
   const osc = ctx.createOscillator();
   const g = ctx.createGain();
@@ -30,7 +39,9 @@ function tone(freq, dur, type = 'square', vol = 0.12, slide = 0, delay = 0) {
 }
 
 function noise(dur, vol = 0.1, delay = 0) {
-  if (!ctx || save.muted) return;
+  const lv = level();
+  if (!ctx || lv <= 0) return;
+  vol *= lv;
   const t0 = ctx.currentTime + delay;
   const len = Math.floor(ctx.sampleRate * dur);
   const buf = ctx.createBuffer(1, len, ctx.sampleRate);
