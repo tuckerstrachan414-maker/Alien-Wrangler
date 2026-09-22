@@ -1,9 +1,9 @@
 import { buildTiles, buildActors, buildVan, buildUfo, T } from './data/sprites.js';
 import { loadPngProps } from './data/pngProps.js';
-import { getMission } from './data/missions.js';
+import { getMission, GEAR } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
 import {
-  setupInput, consumePress, clearInput, showNetButton, showNoiseButton,
+  setupInput, consumePress, clearInput, showGadgets,
   setControlMode, refreshHints,
 } from './input.js';
 import { Game } from './game.js';
@@ -141,8 +141,7 @@ function enterMission(mission) {
   hud.classList.remove('hidden');
   controls.classList.remove('hidden');
   game.startMission(mission);
-  showNetButton(game.fx.netgun > 0);
-  showNoiseButton(game.fx.noisemaker > 0);
+  showGadgets(game.loadout.map(id => GEAR.find(g => g.id === id)));
   clearInput();
   measureInsets();
   state = 'play';

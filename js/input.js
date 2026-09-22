@@ -2,47 +2,51 @@
 //
 //   'buttons'  — floating joystick lower-left, action buttons lower-right.
 //   'gestures' — no buttons. The screen is split down the middle:
-//                LEFT  (legs)  : drag to walk, flick up to jump, double-tap
-//                                for the Noise Maker. Low fences / bales /
-//                                crates are vaulted automatically.
-//                RIGHT (hands) : tap to grab, HOLD to sprint, swipe in ANY
-//                                direction to dive that way (a dash if no
-//                                alien is in reach), double-tap for the net.
+//                LEFT  (legs)  : drag to walk; push the thumb out past the
+//                                sprint ring (a little beyond full speed) to
+//                                sprint. Low fences / bales / crates are
+//                                vaulted and aliens you touch are grabbed
+//                                automatically.
+//                RIGHT (hands) : TAP = gadget slot 1, SWIPE RIGHT = gadget
+//                                slot 2, SWIPE UP = jump, SWIPE DOWN = dive,
+//                                SWIPE LEFT = dash. Dive and dash both go the
+//                                way you are running, not the way you swiped.
 //
-//   Nothing the right thumb does ever interrupts walking, so sprinting and
-//   diving never cost you your stride; the only left-hand tap gesture is the
-//   Noise Maker, which you set off standing next to a hiding spot anyway.
+//   Nothing the right thumb does ever interrupts walking, and the left thumb
+//   has no taps or flicks at all, so steering can never misfire an action.
 //
 // Both halves are percentage-sized, so the split follows the screen in
 // portrait and landscape alike.
 //
 // Keyboard fallback (desktop): WASD/arrows + Shift sprint, Space jump,
-// J grab, K dash, L dive, N net, B noise maker, Esc/P pause.
+// J grab, K dash, L dive, Q/N gadget 1, E/B gadget 2, Esc/P pause.
 import { initAudio, resumeAudio } from './audio.js';
 import { save } from './save.js';
 
 const JOY_RADIUS = 40;
 
 /* ---- gesture tuning ----
-   A "flick" is a fast, mostly-vertical move sampled over a short rolling
-   window, so slowly dragging the thumb upward to walk north never trips the
-   dash. A "tap" is short in both time and travel. */
+   A swipe is a move of at least flickDist inside a short rolling window. The
+   right thumb has no drag meaning of its own any more, so the speed floor is
+   low: it only has to reject a resting thumb slowly drifting, never a lazy
+   swipe. A "tap" is short in both time and travel. */
 const TAP_MS = 250;        // max duration of a tap
 const TAP_SLOP = 18;       // max travel (px) during a tap
-const DTAP_MS = 320;       // max gap between the two taps of a double-tap
-const DTAP_SLOP = 70;      // max distance between the two taps
-const FLICK_WINDOW = 200;  // ms of pointer history a flick is measured over
-const FLICK_SPEED = 420;   // px/s minimum
-const FLICK_AXIS = 1.4;    // |dy| must beat |dx| by this much
-const FLICK_RELOCK = 300;  // ms before the same finger may flick again
-const HOLD_MS = 170;       // right thumb held this long (without a flick) = sprint
+const FLICK_WINDOW = 250;  // ms of pointer history a swipe is measured over
+const FLICK_SPEED = 200;   // px/s minimum
+const EDGE_HYST = 10;      // px the thumb must fall back inside the ring to stop sprinting
 
-// Flick distance scales a little with the screen's short side so it feels the
-// same on a phone in landscape as it does in portrait.
+// Flick distance and the sprint ring scale a little with the screen's short
+// side so they feel the same on a phone in landscape as in portrait. The ring
+// sits well outside full walking speed (JOY_RADIUS), so you only sprint when
+// you mean to.
 let flickDist = 40;
+let sprintR = 66;
 function measure() {
   const shortSide = Math.min(window.innerWidth, window.innerHeight);
   flickDist = Math.max(30, Math.min(62, Math.round(shortSide * 0.085)));
+  sprintR = Math.max(58, Math.min(84, Math.round(shortSide * 0.17)));
+  document.documentElement.style.setProperty('--sprint-r', `${sprintR}px`);
 }
 measure();
 window.addEventListener('resize', measure);
@@ -53,16 +57,14 @@ export const input = {
   mag: 0,
   sprintHeld: false,     // keyboard Shift (hold-to-sprint)
   sprintToggle: false,   // SPRINT button (buttons mode toggle)
-  sprintHold: 0,         // right-half fingers currently held down (no-buttons mode)
-  holdSpent: false,      // stamina ran dry mid-hold: lift and press again to sprint
-  get sprint() { return this.sprintToggle || this.sprintHeld || (this.sprintHold > 0 && !this.holdSpent); },
+  sprintEdge: false,     // no-buttons: thumb pushed out past the sprint ring
+  edgeSpent: false,      // stamina ran dry at the ring: ease back inside it to re-arm
+  get sprint() { return this.sprintToggle || this.sprintHeld || (this.sprintEdge && !this.edgeSpent); },
   presses: {},           // edge-triggered action flags
-  swipeDir: { x: 0, y: 1 },  // direction of the latest right-half swipe
 };
 
 let controlMode = 'buttons';
-let netAvailable = false;
-let noiseAvailable = false;
+let gadgetSlots = [];    // equipped gadget GEAR entries, [tap slot, swipe-right slot]
 
 export function consumePress(name) {
   if (input.presses[name]) { input.presses[name] = false; return true; }
@@ -73,7 +75,10 @@ export function updateSprintVisual() {
   const btn = document.getElementById('btn-sprint');
   if (btn) btn.classList.toggle('active', input.sprintToggle);
   const base = document.getElementById('joy-base');
-  if (base) base.classList.toggle('sprinting', input.sprint);
+  if (base) {
+    base.classList.toggle('sprinting', input.sprint);
+    base.classList.toggle('spent', input.sprintEdge && input.edgeSpent);
+  }
   const pill = document.getElementById('hud-sprint');
   if (pill) pill.classList.toggle('hidden', !(controlMode === 'gestures' && input.sprint));
 }
@@ -81,7 +86,7 @@ export function updateSprintVisual() {
 export function clearInput() {
   input.move.x = 0; input.move.y = 0; input.mag = 0;
   input.sprintHeld = false; input.sprintToggle = false;
-  input.holdSpent = false;
+  input.sprintEdge = false; input.edgeSpent = false;
   input.presses = {};
   resetPointers();
   updateSprintVisual();
@@ -98,6 +103,7 @@ export function setControlMode(mode) {
   const base = document.getElementById('joy-base');
   if (base) base.classList.add('hidden');
   input.move.x = 0; input.move.y = 0; input.mag = 0;
+  input.sprintEdge = false; input.edgeSpent = false;
   updateSprintVisual();
 }
 
@@ -106,10 +112,15 @@ export function getControlMode() { return controlMode; }
 function applyHintVisibility() {
   const hints = document.getElementById('gesture-hints');
   if (hints) hints.classList.toggle('on', controlMode === 'gestures' && save.gestureHints !== false);
-  const net = document.getElementById('hint-net');
-  if (net) net.classList.toggle('hidden', !netAvailable);
-  const noise = document.getElementById('hint-noise');
-  if (noise) noise.classList.toggle('hidden', !noiseAvailable);
+  // TAP falls back to a plain grab when slot 1 is empty; SWIPE RIGHT does
+  // nothing without a second gadget, so its hint goes dark.
+  const g1 = document.getElementById('hint-g1');
+  if (g1) g1.innerHTML = `TAP<b>${gadgetSlots[0] ? gadgetSlots[0].short : 'GRAB'}</b>`;
+  const g2 = document.getElementById('hint-g2');
+  if (g2) {
+    g2.innerHTML = `<i class="arr rt"></i><b>${gadgetSlots[1] ? gadgetSlots[1].short : '-'}</b>`;
+    g2.classList.toggle('empty', !gadgetSlots[1]);
+  }
 }
 
 export function refreshHints() { applyHintVisibility(); }
@@ -119,78 +130,53 @@ export function refreshHints() { applyHintVisibility(); }
 const tracked = new Map();   // pointerId -> gesture state
 
 function resetPointers() {
-  for (const p of tracked.values()) endHold(p);
   tracked.clear();
-  input.sprintHold = 0;
-}
-
-// Right-thumb hold = sprint. Each held finger owns one "hold" and a pixel ring
-// that sits under it so you can see the sprint is live.
-function startHold(p) {
-  if (p.holding) return;
-  p.holding = true;
-  input.sprintHold++;
-  input.holdSpent = false;
-  const controls = document.getElementById('controls');
-  if (controls) {
-    p.ring = document.createElement('div');
-    p.ring.className = 'hold-fx';
-    controls.appendChild(p.ring);
-    moveHold(p);
-  }
-  updateSprintVisual();
-}
-
-function moveHold(p) {
-  if (!p.ring) return;
-  const last = p.samples[p.samples.length - 1];
-  p.ring.style.left = `${last.x}px`;
-  p.ring.style.top = `${last.y}px`;
-}
-
-function endHold(p) {
-  clearTimeout(p.holdTimer);
-  if (p.ring) { p.ring.remove(); p.ring = null; }
-  if (!p.holding) return;
-  p.holding = false;
-  input.sprintHold = Math.max(0, input.sprintHold - 1);
-  updateSprintVisual();
 }
 
 function track(e) {
-  const now = performance.now();
+  const now = e.timeStamp || performance.now();
   const p = {
     x0: e.clientX, y0: e.clientY, t0: now,
-    maxDist: 0, fired: false, lockUntil: 0,
+    maxDist: 0, fired: false,
     samples: [{ x: e.clientX, y: e.clientY, t: now }],
   };
   tracked.set(e.pointerId, p);
   return p;
 }
 
+// A gap this long between moves means the thumb was resting, not just that
+// the page dropped frames (Chrome delivers pointermoves once per frame, so a
+// phone struggling at 20fps sends them ~50ms apart mid-swipe).
+const REST_MS = 100;
+
 function sample(p, e) {
-  const now = performance.now();
+  // Browsers batch the moves of a slow frame into one event; the coalesced
+  // list has every real sample, which keeps flick speed honest on busy frames.
+  const evs = (e.getCoalescedEvents && e.getCoalescedEvents()) || [];
+  for (const ce of evs.length ? evs : [e]) addSample(p, ce.clientX, ce.clientY, ce.timeStamp || performance.now());
+  const last = p.samples[p.samples.length - 1];
+  p.maxDist = Math.max(p.maxDist, Math.hypot(last.x - p.x0, last.y - p.y0));
+}
+
+function addSample(p, x, y, now) {
   // After the thumb has rested, the only anchor left is a stale sample from
   // before the rest, which made a flick look slow and silently dropped it.
   // Re-stamp the resting position as "one frame ago" so the flick is measured
   // from the moment the thumb actually started moving.
   const prev = p.samples[p.samples.length - 1];
-  if (prev && now - prev.t > 50) p.samples = [{ x: prev.x, y: prev.y, t: now - 16 }];
-  p.samples.push({ x: e.clientX, y: e.clientY, t: now });
+  if (prev && now - prev.t > REST_MS) p.samples = [{ x: prev.x, y: prev.y, t: now - 16 }];
+  p.samples.push({ x, y, t: now });
   // keep one sample older than the window so short flicks still have an anchor
   let cut = 0;
   for (let i = 0; i < p.samples.length - 1; i++) {
     if (now - p.samples[i].t > FLICK_WINDOW) cut = i; else break;
   }
   if (cut > 0) p.samples.splice(0, cut);
-  p.maxDist = Math.max(p.maxDist, Math.hypot(e.clientX - p.x0, e.clientY - p.y0));
-  return now;
 }
 
 // Any-direction flick: returns a unit vector for the rolling window ending at
-// the latest sample, or null. Used by the right thumb (swipe = dive that way).
-function flickAny(p, now) {
-  if (now < p.lockUntil) return null;
+// the latest sample, or null.
+function flickAny(p) {
   const last = p.samples[p.samples.length - 1];
   const anchor = p.samples[0];
   const dt = (last.t - anchor.t) / 1000;
@@ -203,25 +189,10 @@ function flickAny(p, now) {
   return { x: dx / d, y: dy / d };
 }
 
-// Returns 'up' | 'down' | null for the rolling window ending at the latest sample.
-function flick(p, now) {
-  if (now < p.lockUntil) return null;
-  const last = p.samples[p.samples.length - 1];
-  const anchor = p.samples[0];
-  const dt = (last.t - anchor.t) / 1000;
-  if (dt < 0.016) return null;
-  const dx = last.x - anchor.x;
-  const dy = last.y - anchor.y;
-  if (Math.abs(dy) < flickDist) return null;
-  if (Math.abs(dy) < Math.abs(dx) * FLICK_AXIS) return null;
-  if (Math.abs(dy) / dt < FLICK_SPEED) return null;
-  return dy < 0 ? 'up' : 'down';
-}
-
-function armAfterFlick(p, now) {
-  p.fired = true;
-  p.lockUntil = now + FLICK_RELOCK;
-  p.samples = [p.samples[p.samples.length - 1]];
+// Right-thumb swipe -> action, split into four 90-degree wedges.
+function swipeAction(dir) {
+  if (Math.abs(dir.y) >= Math.abs(dir.x)) return dir.y < 0 ? 'jump' : 'dive';
+  return dir.x < 0 ? 'dash' : 'gadget2';
 }
 
 function isTap(p, now) {
@@ -259,8 +230,6 @@ export function setupInput() {
 
   let joyId = null;
   let origin = { x: 0, y: 0 };
-  let lastLeftTap = 0, lastLeftTapPos = { x: 0, y: 0 };
-  let lastRightTap = 0, lastRightTapPos = { x: 0, y: 0 };
 
   const setKnob = (dx, dy) => {
     joyKnob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -277,57 +246,46 @@ export function setupInput() {
     joyBase.style.top = `${e.clientY}px`;
     joyBase.classList.remove('hidden');
     setKnob(0, 0);
-    track(e);
     capture(joyZone, e);
     e.preventDefault();
   });
 
   joyZone.addEventListener('pointermove', (e) => {
     if (e.pointerId !== joyId) return;
-    let dx = e.clientX - origin.x;
-    let dy = e.clientY - origin.y;
-    const len = Math.hypot(dx, dy);
-    if (len > JOY_RADIUS) { dx = dx / len * JOY_RADIUS; dy = dy / len * JOY_RADIUS; }
-    setKnob(dx, dy);
+    const rx = e.clientX - origin.x;
+    const ry = e.clientY - origin.y;
+    const len = Math.hypot(rx, ry);
+    // Walking speed tops out at JOY_RADIUS. In no-buttons mode the knob keeps
+    // travelling out to the sprint ring so you can see how close you are.
+    const knobMax = controlMode === 'gestures' ? sprintR + 4 : JOY_RADIUS;
+    const k = len > knobMax ? knobMax / len : 1;
+    setKnob(rx * k, ry * k);
     input.mag = Math.min(1, len / JOY_RADIUS);
     if (len > 2) {
-      input.move.x = dx / JOY_RADIUS;
-      input.move.y = dy / JOY_RADIUS;
+      const w = Math.min(len, JOY_RADIUS) / len / JOY_RADIUS;
+      input.move.x = rx * w;
+      input.move.y = ry * w;
     }
 
     if (controlMode !== 'gestures') return;
-    const p = tracked.get(e.pointerId);
-    if (!p) return;
-    const now = sample(p, e);
-    if (flick(p, now) === 'up') {
-      input.presses.jump = true;
-      armAfterFlick(p, now);
-      tapFx(e.clientX, e.clientY, 'swipe');
-      // The stick keeps following the thumb — the hop just fires alongside it,
-      // so a flick never interrupts the walk.
+    // Past the ring = sprint, with a little hysteresis so the edge doesn't
+    // flicker. Falling back inside it also re-arms a sprint that ran dry.
+    const on = input.sprintEdge ? len > sprintR - EDGE_HYST : len >= sprintR;
+    if (!on) input.edgeSpent = false;
+    if (on !== input.sprintEdge) {
+      input.sprintEdge = on;
+      updateSprintVisual();
     }
   });
 
   const joyEnd = (e) => {
     if (e.pointerId !== joyId) return;
-    const p = tracked.get(e.pointerId);
     joyId = null;
     joyBase.classList.add('hidden');
     input.move.x = 0; input.move.y = 0; input.mag = 0;
-    if (p) {
-      const now = performance.now();
-      if (controlMode === 'gestures' && e.type === 'pointerup' && isTap(p, now)) {
-        const near = Math.hypot(e.clientX - lastLeftTapPos.x, e.clientY - lastLeftTapPos.y) < DTAP_SLOP;
-        if (now - lastLeftTap < DTAP_MS && near && noiseAvailable) {
-          input.presses.noise = true;
-          tapFx(e.clientX, e.clientY, 'bang');
-          lastLeftTap = 0;
-        } else {
-          lastLeftTap = now;
-          lastLeftTapPos = { x: e.clientX, y: e.clientY };
-        }
-      }
-      tracked.delete(e.pointerId);
+    if (input.sprintEdge || input.edgeSpent) {
+      input.sprintEdge = false; input.edgeSpent = false;
+      updateSprintVisual();
     }
   };
   joyZone.addEventListener('pointerup', joyEnd);
@@ -338,49 +296,34 @@ export function setupInput() {
   actZone.addEventListener('pointerdown', (e) => {
     initAudio(); resumeAudio();
     if (controlMode !== 'gestures') return;
-    const p = track(e);
-    // Still down after HOLD_MS and not a flick-in-progress -> sprint until lifted.
-    p.holdTimer = setTimeout(() => {
-      if (tracked.get(e.pointerId) === p) startHold(p);
-    }, HOLD_MS);
+    track(e);
     capture(actZone, e);
     e.preventDefault();
   });
 
+  // One swipe per touch: the thumb drifting back after a flick can't fire a
+  // second, opposite action (a dive that bounces into a jump, say).
   actZone.addEventListener('pointermove', (e) => {
     const p = tracked.get(e.pointerId);
-    if (!p || controlMode !== 'gestures') return;
-    const now = sample(p, e);
-    moveHold(p);
-    const dir = flickAny(p, now);
+    if (!p || p.fired || controlMode !== 'gestures') return;
+    sample(p, e);
+    const dir = flickAny(p);
     if (!dir) return;
-    input.swipeDir = dir;
-    input.presses.swipe = true;
-    armAfterFlick(p, now);
-    tapFx(e.clientX, e.clientY, 'swipe');
+    const act = swipeAction(dir);
+    p.fired = true;
+    if (act === 'gadget2' && !gadgetSlots[1]) return;
+    input.presses[act] = true;
+    tapFx(e.clientX, e.clientY, act === 'gadget2' ? 'double' : 'swipe');
   });
 
   const actEnd = (e) => {
     const p = tracked.get(e.pointerId);
     if (!p) return;
     tracked.delete(e.pointerId);
-    endHold(p);
     if (controlMode !== 'gestures' || e.type !== 'pointerup') return;
-    const now = performance.now();
-    if (!isTap(p, now)) return;
-    const near = Math.hypot(e.clientX - lastRightTapPos.x, e.clientY - lastRightTapPos.y) < DTAP_SLOP;
-    if (now - lastRightTap < DTAP_MS && near && netAvailable) {
-      // second tap = weapon. GRAB already fired on the first tap, which keeps
-      // single taps instant; a wasted grab at net range costs nothing.
-      input.presses.net = true;
-      tapFx(e.clientX, e.clientY, 'double');
-      lastRightTap = 0;
-    } else {
-      input.presses.grab = true;
-      tapFx(e.clientX, e.clientY, 'tap');
-      lastRightTap = now;
-      lastRightTapPos = { x: e.clientX, y: e.clientY };
-    }
+    if (!isTap(p, e.timeStamp || performance.now())) return;
+    input.presses.gadget1 = true;
+    tapFx(e.clientX, e.clientY, 'tap');
   };
   actZone.addEventListener('pointerup', actEnd);
   actZone.addEventListener('pointercancel', actEnd);
@@ -405,8 +348,8 @@ export function setupInput() {
   bind('btn-dive', 'dive');
   bind('btn-dash', 'dash');
   bind('btn-jump', 'jump');
-  bind('btn-net', 'net');
-  bind('btn-noise', 'noise');
+  bind('btn-g1', 'gadget1');
+  bind('btn-g2', 'gadget2');
 
   // SPRINT is a toggle, not a momentary action
   const sprintBtn = document.getElementById('btn-sprint');
@@ -425,8 +368,8 @@ export function setupInput() {
     KeyK: 'dash', KeyX: 'dash',
     KeyL: 'dive', KeyC: 'dive',
     Space: 'jump',
-    KeyN: 'net', KeyV: 'net',
-    KeyB: 'noise', KeyE: 'noise',
+    KeyQ: 'gadget1', KeyN: 'gadget1',
+    KeyE: 'gadget2', KeyB: 'gadget2', KeyV: 'gadget2',
     Escape: 'pause', KeyP: 'pause',
   };
   window.addEventListener('keydown', (e) => {
@@ -478,16 +421,18 @@ export function setButtonCooling(id, cooling) {
   if (el) el.classList.toggle('cooling', cooling);
 }
 
-export function showNetButton(show) {
-  netAvailable = !!show;
-  const el = document.getElementById('btn-net');
-  if (el) el.classList.toggle('hidden', !show);
-  applyHintVisibility();
-}
-
-export function showNoiseButton(show) {
-  noiseAvailable = !!show;
-  const el = document.getElementById('btn-noise');
-  if (el) el.classList.toggle('hidden', !show);
+// Equipped gadgets (GEAR entries, slot order). Buttons mode gets one button
+// per slot, labelled and coloured for the gadget in it; the gesture legend
+// relabels TAP / SWIPE RIGHT to match.
+export function showGadgets(slots) {
+  gadgetSlots = slots.slice(0, 2);
+  ['btn-g1', 'btn-g2'].forEach((id, i) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const g = gadgetSlots[i];
+    el.classList.toggle('hidden', !g);
+    el.textContent = g ? g.short : '';
+    if (g) el.dataset.gadget = g.id; else delete el.dataset.gadget;
+  });
   applyHintVisibility();
 }

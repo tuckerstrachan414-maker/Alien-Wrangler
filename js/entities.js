@@ -54,8 +54,8 @@ export class Player {
     return true;
   }
 
-  // Point the agent along a gesture's direction (swipe-to-dive/dash). Buttons
-  // mode passes nothing and keeps using the way you're already facing.
+  // Point the agent along a given direction (dive aim assist). Without one
+  // the move keeps using the way you're already running / facing.
   aim(dir) {
     if (!dir) return;
     const len = Math.hypot(dir.x, dir.y);
@@ -169,9 +169,11 @@ export class Player {
       moveIn.sprintToggle = false;
       updateSprintVisual();
     }
-    // same for a no-buttons hold: stop draining, lift + press again to resume
-    if (moveIn.sprintHold > 0 && !moveIn.holdSpent && this.moving && this.stamina <= 1) {
-      moveIn.holdSpent = true;
+    // same for no-buttons edge-sprint: stop until the thumb eases back inside
+    // the sprint ring and pushes out again (otherwise it would stutter along
+    // on every sliver of regen)
+    if (moveIn.sprintEdge && !moveIn.edgeSpent && this.moving && this.stamina <= 1) {
+      moveIn.edgeSpent = true;
       updateSprintVisual();
     }
     const top = (sprinting ? this.sprintSpeed : this.baseSpeed) * this.carryPenalty * (this.moving ? mag : 0);
