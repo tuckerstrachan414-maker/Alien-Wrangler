@@ -26,11 +26,12 @@ the map at the same zoom).
 ## 📺 Menus
 
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
-- **MISSION BRIEFING** — deploying on a contract opens a classified CIA memo that types itself out
-  (with typewriter sound) beside your personnel file. The memo covers the hostiles and how many of each,
-  the time window before the UFO arrives, map intel (Maple Street's noise rules, the cornfield, the container
-  maze, the volcano…), the pay and deductions, and an equipment advisory based on the gear you actually own.
-  The personnel file shows your agent, clearance, record, field stats and the tools you've been issued.
+- **MISSION BRIEFING** — deploying on a contract opens a short classified CIA memo that types itself out
+  (with typewriter sound) beside your personnel file: a 2-3 sentence situation report (including map rules
+  like Maple Street's noise meter), the time window, pay and deductions, and a card for each alien type with
+  its sprite and count. **Tap an alien card** for a small intel popup: threat level, traits and how to handle it.
+  The personnel file shows your agent, clearance, record, field stats, your two gadget slots (tap a slot to
+  change it, or SWAP) and your other tools.
   Tap the report to skip the typing, **GEAR UP** to visit the shop and come back, **BEGIN OP** to deploy.
 - **SETTINGS** — sound on/off, SFX volume, control scheme, gesture hints, and save data.
 - **SANDBOX** — free play. Pick any map, any alien roster, any time limit (including **no limit**,
@@ -47,28 +48,31 @@ Both work in portrait and landscape.
 | Zone | Control |
 |---|---|
 | Left thumb | Floating joystick to move |
-| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) · **NOISE** (once you buy the Noise Maker) |
+| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · one button per equipped **gadget** (labelled NET / NOISE) |
 
 ### No-buttons mode
 
 The screen splits down the middle: the left thumb is your **legs**, the right thumb is your **hands**.
-Nothing the right thumb does ever interrupts walking.
+Nothing the right thumb does ever interrupts walking, and the left thumb has no taps or flicks, so steering
+can never misfire an action.
 
 | Half | Gesture | Action |
 |---|---|---|
 | Left | Drag anywhere | Move (the stick spawns under your thumb) |
-| Left | Flick **up** | Jump (you keep walking) |
+| Left | Push out past the **ring** | Sprint. The ring sits a good way past full walking speed, so you only sprint on purpose. Run out of stamina and it goes red: ease back inside the ring and push out again to re-arm |
 | Left | Walk into a fence / bale / crate | Vault it automatically |
-| Left | Double-tap | Noise Maker (needs the Noise Maker) |
-| Right | Tap | Grab |
-| Right | **Hold** | Sprint for as long as you hold (a ring sits under your thumb) |
-| Right | **Swipe any direction** | Dive that way, with a little aim assist toward the alien you swiped at. If nothing is in reach, it's a dash instead, so you never eat dirt diving at nothing |
-| Right | Double-tap | Fire the net gun (needs the Net Gun) |
+| Left | Walk into an alien | Grab it automatically (same reach as the GRAB button) |
+| Right | **Tap** | Gadget in slot 1 (a plain grab if the slot is empty) |
+| Right | Swipe **right** | Gadget in slot 2 |
+| Right | Swipe **up** | Jump |
+| Right | Swipe **down** | Dive the way you're running, bent slightly toward an alien that's roughly ahead |
+| Right | Swipe **left** | Dash the way you're running |
 
-A swipe has to be quick, so slow thumb drift never trips a dive. A small legend in the bottom corners
-reminds you of the gestures and dims when an action is on cooldown. Turn it off in Settings once you know them.
+One swipe per touch, so a thumb bouncing back after a flick can't fire a second action. The legend in the
+bottom corners is laid out as a cross (each label on the side you swipe toward), shows which gadget is on TAP
+and SWIPE RIGHT, and dims when an action is on cooldown. Turn it off in Settings once you know it.
 
-Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, N net, B noise maker, P pause.
+Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, Q/N gadget 1, E/B gadget 2, P pause.
 
 ## ⏸️ Pausing
 
@@ -112,8 +116,12 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 
 ## 🧰 Equipment shop
 
-Track Shoes · Field Training (stamina) · Grip Gloves · Kneepads · Alien Sack ·
-Noise Maker · Net Gun · Stun-Proof Vest
+Track Shoes · Field Training (stamina) · Grip Gloves · Kneepads · Alien Sack · Stun-Proof Vest
+
+**Gadgets** (Noise Maker, Net Gun) are the gear you fire by hand. You can own them all, but only
+**two ride along** on a mission: slot 1 (TAP / button 1) and slot 2 (SWIPE RIGHT / button 2). Pick the slots
+on the gadget's shop card, in the briefing's personnel file, or in the Sandbox loadout. Buying your first
+gadgets fills empty slots automatically.
 
 - **Noise Maker** (replaces the old Tracker Goggles; if you owned goggles, you keep that level as a Noise Maker)
   sets off a deafening **BANG** around you. Aliens close by are knocked out of hiding, out of cloak and
@@ -158,7 +166,8 @@ js/entities.js      player movement + alien AI (hide / run / attack)
 js/nav.js           nav grid, BFS pathfinding, collision
 js/input.js         joystick + buttons, split-screen gesture scheme, keyboard fallback
 js/ui.js            title / play hub / missions / briefing / shop / settings / sandbox / results / pause
-js/briefing.js      mission brief: CIA memo builder, typewriter effect, personnel file
+js/briefing.js      mission brief: CIA memo builder, alien intel cards, typewriter effect, personnel file
+js/loadout.js       two-slot gadget loadout (resolve against owned gear, equip / cycle / swap)
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/maps.js     the five maps
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog

@@ -5,6 +5,7 @@ import {
 import { save, persist, resetSave } from './save.js';
 import { sfx } from './audio.js';
 import { buildReport, buildDossier, typewrite } from './briefing.js';
+import { resolveLoadout, equipGadget, cycleSlot, slotControl, ownedGadgets } from './loadout.js';
 
 const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
@@ -169,9 +170,16 @@ export class UI {
 
     const body = this.el('div', 'brief-body');
     const dossierPane = this.el('div', 'brief-pane dossier-pane');
-    dossierPane.appendChild(buildDossier(this.assets, gearEffects(save.gear), save.gear));
+    // re-draw just the file when a gadget slot changes, so the report keeps typing
+    const fillDossier = () => {
+      const top = dossierPane.scrollTop;
+      dossierPane.innerHTML = '';
+      dossierPane.appendChild(buildDossier(this.assets, gearEffects(save.gear), save.gear, fillDossier));
+      dossierPane.scrollTop = top;
+    };
+    fillDossier();
     const reportPane = this.el('div', 'brief-pane report-pane');
-    const paper = buildReport(m, gearEffects(save.gear));
+    const paper = buildReport(m, this.assets);
     reportPane.appendChild(paper);
     const skip = this.el('div', 'brief-skip', 'TAP REPORT TO SKIP');
     reportPane.appendChild(skip);
@@ -208,40 +216,15 @@ export class UI {
     const list = this.el('div', 'card-list');
     s.appendChild(list);
 
-    let perkHeader = false;
-    for (const g of GEAR) {
-      if (g.perk && !perkHeader) {
-        perkHeader = true;
-        list.appendChild(this.el('div', 'section-label wide', 'PERKS'));
-      }
-      const lv = save.gear[g.id] || 0;
-      const maxed = lv >= g.levels.length;
-      const next = maxed ? null : g.levels[lv];
-      const card = this.el('div', 'card');
-      const head = this.el('div', 'card-head');
-      head.appendChild(this.el('div', 'card-title', `${g.icon} ${g.name}`));
-      head.appendChild(this.el('div', 'stars', '&#9733;'.repeat(lv) + '<span style="opacity:0.25">' + '&#9733;'.repeat(g.levels.length - lv) + '</span>'));
-      card.appendChild(head);
-      card.appendChild(this.el('div', 'card-desc',
-        `${g.desc}<br>${maxed ? '<b>MAXED OUT</b>' : `Next: ${next.label}`}`));
-      const row = this.el('div', 'card-row');
-      if (!maxed) {
-        const afford = save.cash >= next.price;
-        const buy = this.btn(`BUY &mdash; $${next.price}`, afford ? 'primary' : '', () => {
-          if (save.cash < next.price) return;
-          save.cash -= next.price;
-          save.gear[g.id] = lv + 1;
-          persist();
-          sfx.cash();
-          this.showShop(backTo);
-        });
-        buy.disabled = !afford;
-        row.appendChild(buy);
-      } else {
-        row.appendChild(this.el('div', 'done', 'FULLY UPGRADED'));
-      }
-      card.appendChild(row);
-      list.appendChild(card);
+    const groups = [
+      ['GEAR', GEAR.filter(g => !g.gadget && !g.perk)],
+      ['GADGETS &middot; EQUIP 2', GEAR.filter(g => g.gadget)],
+      ['PERKS', GEAR.filter(g => g.perk)],
+    ];
+    const loadout = resolveLoadout(save.gear);
+    for (const [label, items] of groups) {
+      list.appendChild(this.el('div', 'section-label wide', label));
+      for (const g of items) list.appendChild(this.gearCard(g, loadout, backTo));
     }
     const back = {
       missions: () => this.showMissions(),
@@ -250,6 +233,65 @@ export class UI {
     }[backTo] || (() => this.showPlay());
     if (backTo === 'brief') s.appendChild(this.btn('BACK TO BRIEFING', 'primary', back));
     if (backTo !== 'brief') s.appendChild(this.btn('BACK', '', back));
+  }
+
+  // Re-open the shop where it was scrolled to (after a purchase or an equip).
+  redrawShop(backTo) {
+    const old = this.root.querySelector('.screen');
+    const top = old ? old.scrollTop : 0;
+    this.showShop(backTo);
+    const fresh = this.root.querySelector('.screen');
+    if (fresh) fresh.scrollTop = top;
+  }
+
+  // One shop card: level stars, the next upgrade and BUY, plus the slot
+  // picker once you own a gadget.
+  gearCard(g, loadout, backTo) {
+    const lv = save.gear[g.id] || 0;
+    const maxed = lv >= g.levels.length;
+    const next = maxed ? null : g.levels[lv];
+    const card = this.el('div', 'card');
+    const head = this.el('div', 'card-head');
+    head.appendChild(this.el('div', 'card-title', `${g.icon} ${g.name}`));
+    head.appendChild(this.el('div', 'stars', '&#9733;'.repeat(lv) + '<span style="opacity:0.25">' + '&#9733;'.repeat(g.levels.length - lv) + '</span>'));
+    card.appendChild(head);
+    card.appendChild(this.el('div', 'card-desc',
+      `${g.desc}<br>${maxed ? '<b>MAXED OUT</b>' : `Next: ${next.label}`}`));
+    const row = this.el('div', 'card-row');
+    if (!maxed) {
+      const afford = save.cash >= next.price;
+      const buy = this.btn(`BUY &mdash; $${next.price}`, afford ? 'primary' : '', () => {
+        if (save.cash < next.price) return;
+        save.cash -= next.price;
+        save.gear[g.id] = lv + 1;
+        persist();
+        sfx.cash();
+        this.redrawShop(backTo);
+      });
+      buy.disabled = !afford;
+      row.appendChild(buy);
+    } else {
+      row.appendChild(this.el('div', 'done', 'FULLY UPGRADED'));
+    }
+    card.appendChild(row);
+    if (g.gadget && lv > 0) card.appendChild(this.slotPicker(g.id, loadout, () => this.redrawShop(backTo)));
+    return card;
+  }
+
+  // "EQUIP TO" row on an owned gadget's shop card: one chip per slot.
+  slotPicker(id, loadout, redraw) {
+    const row = this.el('div', 'card-row slot-row');
+    row.appendChild(this.el('div', 'slot-row-label', 'EQUIP'));
+    for (const i of [0, 1]) {
+      const on = loadout[i] === id;
+      row.appendChild(this.chip(`SLOT ${i + 1}`, slotControl(i), on, 'narrow', () => {
+        if (on) return;
+        equipGadget(save.gear, i, id);
+        redraw();
+      }));
+    }
+    if (!loadout.includes(id)) row.appendChild(this.el('div', 'slot-row-note', 'IN LOCKER'));
+    return row;
   }
 
   /* ---------------- settings ---------------- */
@@ -341,14 +383,14 @@ export class UI {
       detail.appendChild(this.el('div', 'opt-name', gestures
         ? 'NO BUTTONS<small>' +
           'Screen splits down the middle, portrait or landscape.<br>' +
-          'LEFT (legs) &mdash; drag anywhere to walk &middot; flick UP to jump &middot; double-tap for the Noise Maker. ' +
-          'Walk into a fence, bale or crate and you vault it automatically.<br>' +
-          'RIGHT (hands) &mdash; tap to grab &middot; HOLD to sprint &middot; SWIPE any direction to dive that way ' +
-          '(it&rsquo;s a dash if nothing&rsquo;s in reach) &middot; double-tap to fire the net gun.' +
+          'LEFT (legs) &mdash; drag anywhere to walk &middot; push your thumb out past the ring to sprint. ' +
+          'Walk into a fence, bale or crate to vault it, and into an alien to grab it.<br>' +
+          'RIGHT (hands) &mdash; TAP gadget 1 &middot; SWIPE RIGHT gadget 2 &middot; SWIPE UP jump &middot; ' +
+          'SWIPE DOWN dive &middot; SWIPE LEFT dash. Dive and dash go the way you&rsquo;re running.' +
           '</small>'
         : 'BUTTONS<small>' +
           'Floating joystick on the left, action buttons on the right.<br>' +
-          'GRAB &middot; DIVE &middot; DASH &middot; JUMP &middot; SPRINT toggle &middot; NET and NOISE when equipped.' +
+          'GRAB &middot; DIVE &middot; DASH &middot; JUMP &middot; SPRINT toggle &middot; a button for each equipped gadget.' +
           '</small>'));
       hintRow.classList.toggle('hidden', !gestures);
     };
@@ -486,6 +528,7 @@ export class UI {
         cfg.gear[g.id] = Math.max(0, Math.min(max, (cfg.gear[g.id] || 0) + d));
         persist();
         redraw();
+        if (g.gadget) drawSlots();
       };
       box.appendChild(this.stepBtn('&minus;', () => step(-1)));
       box.appendChild(meter);
@@ -496,6 +539,29 @@ export class UI {
       s.appendChild(row);
       gearRows.push(redraw);
     }
+
+    // which two gadgets ride along (tap a slot to cycle through the ones loaded above)
+    const slotRow = this.el('div', 'opt-row');
+    slotRow.appendChild(this.el('div', 'opt-name', 'GADGET SLOTS<small>Two ride along &middot; tap a slot to change it</small>'));
+    const slotBox = this.el('div', 'opt-ctl');
+    slotRow.appendChild(slotBox);
+    const drawSlots = () => {
+      slotBox.innerHTML = '';
+      const lo = resolveLoadout(cfg.gear);
+      const many = ownedGadgets(cfg.gear).length > 1;
+      for (const i of [0, 1]) {
+        const g = GEAR.find(x => x.id === lo[i]);
+        const c = this.chip(g ? `${g.icon} ${g.short}` : 'EMPTY', slotControl(i), !!g, 'narrow', () => {
+          if (!many) return;
+          cycleSlot(cfg.gear, i);
+          drawSlots();
+        });
+        slotBox.appendChild(c);
+      }
+    };
+    gearRows.push(drawSlots);
+    drawSlots();
+    s.appendChild(slotRow);
 
     const bulk = this.el('div', 'chip-grid');
     bulk.appendChild(this.chip('MAX ALL GEAR', '', false, '', () => {

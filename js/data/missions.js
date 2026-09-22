@@ -5,66 +5,79 @@ export const MISSIONS = [
   {
     id: 0, map: 'playground', name: 'First Contact',
     desc: '3 grunts spotted at the playground. Easy money. Probably.',
+    brief: 'A small craft came down behind the swings and three Grunts scattered into Sunny Pines Playground. They hide in the bushes, the slide tower and the jungle gym, so watch for rustling leaves. Low risk and easy money, probably.',
     aliens: { grunt: 3 }, time: 170, pay: 120, escapeCost: 35,
   },
   {
     id: 1, map: 'playground', name: 'Recess Is Over',
     desc: 'More of them — and one is fast. Watch the bushes.',
+    brief: 'The playground is crawling again, and this time one of them is a Scout that bolts the moment you get close. Check every bush and cut off its escape before you dive.',
     aliens: { grunt: 3, scout: 1 }, time: 160, pay: 180, escapeCost: 40,
   },
   {
     id: 2, map: 'neighborhood', name: 'Suburban Stakeout',
     desc: 'Aliens on Maple Street at 3am. Keep it quiet — sprinting near a house wakes the block. Watch the NOISE meter.',
+    brief: 'Three Grunts landed on Maple Street while the whole block sleeps. Sprinting fills the NOISE meter, 3x faster outside a house, and dashes or missed dives spike it. Fill it and the block wakes up: every hidden alien bolts and you are fined.',
     aliens: { grunt: 3 }, time: 170, pay: 260, escapeCost: 45,
   },
   {
     id: 3, map: 'farmhouse', name: 'Crop Circles',
     desc: 'They landed in the corn. The corn is a problem.',
+    brief: 'Crop circles appeared overnight at Hollow Creek Farm and the occupants are dug into the corn. Visibility in the rows is near zero, so listen for rustling and use the barn to cut them off.',
     aliens: { grunt: 3, scout: 1 }, time: 160, pay: 260, escapeCost: 50,
   },
   {
     id: 4, map: 'farmhouse', name: 'Barnstormers',
     desc: 'Scouts everywhere and a Trooper with a stun pistol. Stay mobile.',
+    brief: 'Two Scouts and a Trooper are loose around the barn. The Trooper is armored, so your first grab only knocks its helmet off, and its stun bolts make you drop whatever you are carrying. Stay mobile.',
     aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 340, escapeCost: 55,
   },
   {
     id: 5, map: 'neighborhood', name: 'Quiet Hours',
     desc: 'More of them, and a Trooper — but the neighbours are lighter sleepers. Sneak, do not sprint.',
+    brief: 'Back on Maple Street, now with Scouts and an armored Trooper. Sprinting, dashes and missed dives fill the NOISE meter, and a full meter wakes the block, scatters every alien and costs a fine. Walk near the houses and save the loud moves for the road.',
     aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 155, pay: 460, escapeCost: 60,
   },
   {
     id: 6, map: 'shipyard', name: 'Dock Rats',
     desc: 'The container maze is crawling. Check the open containers.',
+    brief: 'Stowaways from inbound cargo have infested the Rust Harbor container yard. Open containers are hiding spots and the steel walls make blind corners. Drive them north onto the dead-end dock.',
     aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 150, pay: 420, escapeCost: 65,
   },
   {
     id: 7, map: 'tropical', name: 'Island Getaway',
     desc: 'They crashed on a jungle island. Lush cover everywhere — mind the volcano.',
+    brief: 'A craft crashed into the jungle canopy on Isla Verde and the survivors scattered. Ferns and huts give cover everywhere, and the volcano at the center is impassable, so they will circle it to lose you.',
     aliens: { scout: 2, trooper: 1 }, time: 155, pay: 500, escapeCost: 65,
   },
   {
     id: 8, map: 'shipyard', name: 'Armored Cargo',
     desc: 'Troopers in force. Their armor shrugs off your first grab.',
+    brief: 'Three armored Troopers are holed up in the container maze. Each one takes two grabs because the first only knocks the helmet off, and their stun bolts make you drop your catch. A net pins them so the armor does not matter.',
     aliens: { scout: 2, trooper: 3 }, time: 145, pay: 580, escapeCost: 75,
   },
   {
     id: 9, map: 'tropical', name: 'Volcano Rising',
     desc: 'Elites hiding in the ferns while the volcano rumbles. A Noise Maker will shake them loose.',
+    brief: 'An Elite is hiding in the Isla Verde ferns while the volcano rumbles. Elites cloak while they run and fire stun bolts. A Noise Maker bang knocks the cloak off and shakes it out of cover.',
     aliens: { grunt: 1, scout: 2, trooper: 2, elite: 1 }, time: 145, pay: 720, escapeCost: 90,
   },
   {
     id: 10, map: 'playground', name: 'Night Shift',
     desc: 'An Elite is on-site: it cloaks. A Noise Maker bang knocks the cloak right off it.',
+    brief: 'Night shift at Sunny Pines: an Elite is on site with Scouts and Troopers. Elites cloak while they run and are near-invisible, but a Noise Maker bang knocks the cloak right off.',
     aliens: { scout: 2, trooper: 2, elite: 1 }, time: 140, pay: 700, escapeCost: 90,
   },
   {
     id: 11, map: 'farmhouse', name: 'The Harvest',
     desc: 'Elites in the corn. This is what they pay you for.',
+    brief: 'Two Elites are dug into the Hollow Creek corn alongside Troopers and Scouts. Visibility in the rows is near zero and the Elites cloak. This is what they pay you for.',
     aliens: { grunt: 1, scout: 2, trooper: 2, elite: 2 }, time: 140, pay: 840, escapeCost: 100,
   },
   {
     id: 12, map: 'shipyard', name: 'Full Invasion',
     desc: 'Everything at once. Bring everything you own.',
+    brief: 'Everything they have is in the Rust Harbor container maze: Scouts, armored Troopers and two cloaking Elites. Bring everything you own.',
     aliens: { scout: 3, trooper: 3, elite: 2 }, time: 135, pay: 1050, escapeCost: 110,
   },
 ];
@@ -76,6 +89,7 @@ export function overtimeMission(n) {
   return {
     id: n, map: maps[k % 3], name: `Overtime Shift ${k + 1}`,
     desc: 'The invasions never stop. Neither do you.',
+    brief: 'Another landing, bigger than the last, with more Elites every shift. The invasions never stop. Neither do you.',
     aliens: {
       scout: 2 + Math.min(3, Math.floor(k / 2)),
       trooper: 2 + Math.min(3, Math.floor(k / 3)),
@@ -182,7 +196,7 @@ export const GEAR = [
     ],
   },
   {
-    id: 'noisemaker', name: 'Noise Maker', icon: '\u{1F4A5}',
+    id: 'noisemaker', name: 'Noise Maker', icon: '\u{1F4A5}', gadget: true, short: 'NOISE',
     desc: 'Set off a deafening BANG: aliens close by are stunned and knocked out of hiding (and out of cloak); hidden ones further out get pinged.',
     levels: [
       { price: 450, label: 'Stun 2s in 72px, ping 140px, 14s reload' },
@@ -190,7 +204,7 @@ export const GEAR = [
     ],
   },
   {
-    id: 'netgun', name: 'Net Gun', icon: '\u{1F578}',
+    id: 'netgun', name: 'Net Gun', icon: '\u{1F578}', gadget: true, short: 'NET',
     desc: 'Fire a net that pins an alien for 3s. 6s reload.',
     levels: [
       { price: 800, label: 'Net Gun Mk.I' },
@@ -214,6 +228,11 @@ export const GEAR = [
     ],
   },
 ];
+
+// Gadgets are the gear you fire by hand. Only GADGET_SLOTS of them ride
+// along on a mission (see loadout.js); the rest stay in the locker.
+export const GADGET_SLOTS = 2;
+export const GADGETS = GEAR.filter(g => g.gadget);
 
 // Noise Maker tuning per level (index = level). Radii are world px.
 export const NOISE_MAKER = [

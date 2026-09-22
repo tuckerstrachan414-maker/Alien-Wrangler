@@ -6,13 +6,14 @@ import { Player, Alien } from './entities.js';
 import { input, consumePress, setButtonCooling, getControlMode } from './input.js';
 import { sfx } from './audio.js';
 import { save } from './save.js';
+import { resolveLoadout } from './loadout.js';
 
 const DEPOSIT_R = 30;
 
-// Swipe-to-dive aim assist (no-buttons mode): an alien inside this reach and
-// cone of the swipe gets dived at; otherwise the swipe is a dash.
+// Dive aim assist (no-buttons mode): the dive goes the way you're running,
+// bent onto an alien inside this reach and cone of that direction.
 const DIVE_REACH = 104;
-const DIVE_CONE = Math.cos(40 * Math.PI / 180);
+const DIVE_CONE = Math.cos(30 * Math.PI / 180);
 
 // Field Drones Mk.II paints each tier its own arrow colour.
 const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
@@ -28,6 +29,8 @@ export class Game {
     this.mission = mission;
     // Sandbox runs carry their own loadout; contracts use what you own.
     this.fx = gearEffects(mission.gear || save.gear);
+    // only two gadgets ride along: [slot 1 = tap / button 1, slot 2 = swipe right / button 2]
+    this.loadout = resolveLoadout(mission.gear || save.gear);
     this.map = MAP_BUILDERS[mission.map](this.assets);
     this.nav = buildNav(this.map);
     this.hideSpots = this.map.hideSpots;
@@ -61,6 +64,7 @@ export class Game {
     this.shake = 0;
     this.msg = null; this.msgT = 0;
     this.flash = 0;             // Noise Maker white-out (seconds left)
+    this.fullNagT = -9;         // last auto-grab "HANDS FULL" popup
     this.shockwaves = [];       // Noise Maker blast rings
     this.running = true;
     this.time = 0;
@@ -276,26 +280,62 @@ export class Game {
     if (this.stealth) this.noisePulse(p.x, p.y, 70);
   }
 
-  // No-buttons swipe: dive at an alien the swipe points at (with a little aim
-  // assist), otherwise dash that way. Either way the swipe always does something.
-  swipeAction(dir) {
+  // Fire the gadget in loadout slot 0 / 1. An empty slot 1 falls back to a
+  // plain grab so a no-buttons tap is never dead.
+  useGadget(slot) {
+    const id = this.loadout[slot];
+    if (id === 'noisemaker') this.detonateNoise();
+    else if (id === 'netgun') this.fireNet();
+    else if (slot === 0) this.grabAttempt();
+  }
+
+  gadgetCooling(slot) {
     const p = this.player;
-    if (!p.canAct) return;
-    let best = null, bestD = 1e9;
+    const id = this.loadout[slot];
+    if (id === 'noisemaker') return p.noiseCd > 0;
+    if (id === 'netgun') return p.netCd > 0;
+    return false;
+  }
+
+  // Dive the way you're running. In no-buttons mode it bends onto an alien
+  // that's roughly ahead (a thumb swipe can't aim as finely as a stick).
+  diveAction() {
+    const p = this.player;
+    if (!p.canAct || p.airborne) return;
+    let aim = null;
+    if (getControlMode() === 'gestures') {
+      let bestD = 1e9;
+      for (const a of this.aliens) {
+        if (!a.grabbable || a.z >= 16) continue;
+        const ax = a.x + a.vx * 0.12 - p.x, ay = a.y + a.vy * 0.12 - p.y;
+        const d = Math.hypot(ax, ay);
+        if (d > DIVE_REACH || d < 0.001) continue;
+        if ((ax * p.dir.x + ay * p.dir.y) / d < DIVE_CONE && d > 16) continue;
+        if (d < bestD) { bestD = d; aim = { x: ax / d, y: ay / d }; }
+      }
+    }
+    if (p.tryDive(aim)) sfx.dive();
+  }
+
+  // No-buttons mode has no GRAB control: touching a loose alien with your
+  // hands (the same reach a tap of GRAB would have) scoops it up.
+  autoGrab() {
+    const p = this.player;
+    if (p.grabCd > 0 || !p.canAct) return;
+    const gp = p.grabPoint();
     for (const a of this.aliens) {
-      if (!a.grabbable || a.z >= 16) continue;
-      const ax = a.x + a.vx * 0.12 - p.x, ay = a.y + a.vy * 0.12 - p.y;
-      const d = Math.hypot(ax, ay);
-      if (d > DIVE_REACH || d < 0.001) continue;
-      if ((ax * dir.x + ay * dir.y) / d < DIVE_CONE && d > 16) continue;
-      if (d < bestD) { bestD = d; best = { x: ax / d, y: ay / d }; }
-    }
-    if (best && !p.airborne) {
-      if (p.tryDive(best)) { sfx.dive(); return; }
-    }
-    if (p.tryDash(dir)) {
-      sfx.dash(); this.puff(p.x, p.y);
-      if (this.stealth) this.noisePulse(p.x, p.y, 18);
+      if (!a.grabbable || a.z >= 14) continue;
+      if (Math.hypot(a.x - gp.x, a.y - gp.y) >= gp.r + a.r) continue;
+      if (p.carried.length >= this.fx.carryMax && !(a.helmet && a.state !== 'netted')) {
+        if (this.time - this.fullNagT > 1.6) {
+          this.fullNagT = this.time;
+          this.popup(p.x, p.y - 20, 'HANDS FULL', '#ff9e5e');
+        }
+        return;
+      }
+      p.grabCd = 0.35;
+      this.tryCapture(a);
+      return;
     }
   }
 
@@ -309,19 +349,20 @@ export class Game {
     // actions
     if (consumePress('jump')) { if (p.tryJump()) sfx.jump(); }
     if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); if (this.stealth) this.noisePulse(p.x, p.y, 18); } }
-    if (consumePress('dive')) { if (p.tryDive()) sfx.dive(); }
+    if (consumePress('dive')) this.diveAction();
     if (consumePress('grab')) this.grabAttempt();
-    if (consumePress('net')) this.fireNet();
-    if (consumePress('noise')) this.detonateNoise();
-    if (consumePress('swipe')) this.swipeAction(input.swipeDir);
+    if (consumePress('gadget1')) this.useGadget(0);
+    if (consumePress('gadget2')) this.useGadget(1);
 
+    const gestures = getControlMode() === 'gestures';
     // No-buttons auto-vault: walk into a fence / hay bale / crate and you hop it.
-    if (getControlMode() === 'gestures' && p.state === 'normal' && p.moving && p.z === 0) {
+    if (gestures && p.state === 'normal' && p.moving && p.z === 0) {
       const reach = p.r + 3;
       if (overlapsJumpable(this.map, p.x + p.dir.x * reach, p.y + p.dir.y * reach, 2)) {
         if (p.tryJump()) sfx.jump();
       }
     }
+    if (gestures) this.autoGrab();
 
     const wasDiving = p.state === 'diving';
     p.update(dt, this.map, input);
@@ -433,12 +474,15 @@ export class Game {
     // button cooldown UI
     setButtonCooling('btn-dash', p.dashCd > 0 || p.stamina < 18);
     setButtonCooling('btn-dive', p.stamina < 22 || !p.canAct);
-    setButtonCooling('btn-net', p.netCd > 0);
-    setButtonCooling('btn-noise', p.noiseCd > 0);
-    setButtonCooling('hint-net', p.netCd > 0);
-    setButtonCooling('hint-noise', p.noiseCd > 0);
-    setButtonCooling('hint-swipe', p.stamina < 18 || !p.canAct);
-    setButtonCooling('hint-sprint', input.holdSpent || p.stamina <= 1);
+    const g1 = this.gadgetCooling(0), g2 = this.gadgetCooling(1);
+    setButtonCooling('btn-g1', g1);
+    setButtonCooling('btn-g2', g2);
+    setButtonCooling('hint-g1', g1);
+    setButtonCooling('hint-g2', g2);
+    setButtonCooling('hint-jump', !p.canAct || p.z > 0);
+    setButtonCooling('hint-dive', p.stamina < 22 || !p.canAct || p.airborne);
+    setButtonCooling('hint-dash', p.dashCd > 0 || p.stamina < 18 || !p.canAct);
+    setButtonCooling('hint-sprint', input.edgeSpent || p.stamina <= 1);
 
     // mission end?
     const loose = this.aliens.filter(a => a.free || a.state === 'beaming');

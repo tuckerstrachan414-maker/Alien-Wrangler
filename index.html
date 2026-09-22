@@ -33,23 +33,25 @@
 
   <!-- Touch controls -->
   <div id="controls" class="hidden">
-    <!-- Left half = legs: drag to walk, flick up to jump, double-tap for the Noise Maker -->
+    <!-- Left half = legs: drag to walk, push out past the sprint ring to sprint -->
     <div id="joy-zone">
-      <div id="joy-base" class="hidden"><div id="joy-knob"></div></div>
+      <div id="joy-base" class="hidden"><div id="joy-edge"></div><div id="joy-knob"></div></div>
     </div>
-    <!-- Right half = hands: tap grab, hold sprint, swipe dive. Only live in no-buttons mode. -->
+    <!-- Right half = hands: tap gadget 1, swipe up jump / down dive / left dash / right gadget 2.
+         Only live in no-buttons mode. -->
     <div id="act-zone"></div>
     <div id="gesture-hints">
       <div class="ghint-col">
         <div class="ghint">DRAG <b>MOVE</b></div>
-        <div class="ghint" id="hint-jump">FLICK UP <b>JUMP</b></div>
-        <div class="ghint hidden" id="hint-noise">2-TAP <b>NOISE</b></div>
+        <div class="ghint" id="hint-sprint">PUSH FAR <b>SPRINT</b></div>
       </div>
-      <div class="ghint-col">
-        <div class="ghint" id="hint-grab">TAP <b>GRAB</b></div>
-        <div class="ghint" id="hint-sprint">HOLD <b>SPRINT</b></div>
-        <div class="ghint" id="hint-swipe">SWIPE <b>DIVE</b></div>
-        <div class="ghint hidden" id="hint-net">2-TAP <b>NET</b></div>
+      <!-- laid out as a cross so each label sits the way you swipe for it -->
+      <div class="ghint-cross">
+        <div class="ghint" id="hint-jump"><i class="arr up"></i><b>JUMP</b></div>
+        <div class="ghint" id="hint-dash"><i class="arr lt"></i><b>DASH</b></div>
+        <div class="ghint" id="hint-g1">TAP<b>GRAB</b></div>
+        <div class="ghint" id="hint-g2"><i class="arr rt"></i><b>-</b></div>
+        <div class="ghint" id="hint-dive"><i class="arr dn"></i><b>DIVE</b></div>
       </div>
     </div>
     <div id="btn-zone">
@@ -58,8 +60,9 @@
       <button class="act-btn" id="btn-dash">DASH</button>
       <button class="act-btn" id="btn-jump">JUMP</button>
       <button class="act-btn toggle" id="btn-sprint">SPRINT</button>
-      <button class="act-btn hidden" id="btn-net">NET</button>
-      <button class="act-btn hidden" id="btn-noise">NOISE</button>
+      <!-- gadget slots 1 + 2, labelled for whatever is equipped -->
+      <button class="act-btn gadget-btn hidden" id="btn-g1"></button>
+      <button class="act-btn gadget-btn hidden" id="btn-g2"></button>
     </div>
   </div>
 

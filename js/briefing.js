@@ -1,12 +1,15 @@
-// Mission brief: a classified CIA-style memo that types itself out (with
-// typewriter sound) next to the agent's personnel file.
+// Mission brief: a short classified CIA-style memo that types itself out
+// (with typewriter sound) next to the agent's personnel file.
 //
-//   buildReport(mission, fx)  -> paper DOM (text still fully present)
-//   buildDossier(assets, fx)  -> personnel file DOM (agent, stats, tools)
-//   typewrite(paper, opts)    -> blanks the paper's text and types it back in
-import { GEAR, abandonFee } from './data/missions.js';
+//   buildReport(mission, assets) -> paper DOM: 2-3 sentence situation, the
+//                                   op's numbers, and a card per alien type
+//                                   (sprite + count) that opens an intel popup
+//   buildDossier(assets, fx, gear, onLoadout) -> personnel file DOM
+//   typewrite(paper, opts)       -> blanks the paper's text and types it back in
+import { GEAR } from './data/missions.js';
 import { save } from './save.js';
 import { sfx } from './audio.js';
+import { resolveLoadout, ownedGadgets, cycleSlot, swapSlots, slotControl } from './loadout.js';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -16,81 +19,25 @@ const redact = (n) => `<span class="redact">${'█'.repeat(n)}</span>`;
 /* ---------------- per-map intelligence ---------------- */
 
 const MAP_INTEL = {
-  playground: {
-    code: 'SPP',
-    location: `SUNNY PINES PLAYGROUND, ${redact(7)} COUNTY`,
-    conditions: 'DAYLIGHT. PARK CLEARED UNDER A "GAS LEAK" COVER STORY.',
-    situation: 'A SMALL CRAFT CAME DOWN BEHIND THE SWINGS. OCCUPANTS HAVE DISPERSED INTO THE PARK.',
-    terrain: [
-      'OPEN LAWNS, LONG SIGHTLINES. HOSTILES WILL SEE YOU COMING. USE THE TREES TO CLOSE DISTANCE.',
-      'BUSHES, THE SLIDE TOWER AND THE JUNGLE GYM ARE PRIME HIDING SPOTS. WATCH FOR RUSTLING LEAVES.',
-      'THE FENCES AT THE PARK ENTRANCE, BENCHES AND BUSHES ARE LOW ENOUGH TO JUMP.',
-      'EXTRACTION VAN IS PARKED ON THE SOUTH LOT. SECURE CAPTURES AT ITS REAR DOOR.',
-    ],
-  },
-  farmhouse: {
-    code: 'HCF',
-    location: `HOLLOW CREEK FARM, RURAL ROUTE ${redact(2)}`,
-    conditions: 'DAYLIGHT. THE FAMILY HAS BEEN RELOCATED TO A MOTEL.',
-    situation: 'CROP FORMATIONS REPORTED OVERNIGHT. HOSTILES ARE DUG IN AMONG THE CROPS AND OUTBUILDINGS.',
-    terrain: [
-      'CORNFIELD (WEST): DENSE CROP WITH SEVERAL HIDING POSITIONS IN THE ROWS. VISIBILITY NEAR ZERO.',
-      'THE BARN AND SILO ARE SOLID. HOSTILES WILL USE THEM TO BREAK LINE OF SIGHT.',
-      'HAY BALES AND THE ANIMAL PEN FENCE CAN BE JUMPED. THE PEN IS A GOOD PLACE TO CORNER THEM.',
-      'EXTRACTION VAN IS ON THE DIRT ROAD, SOUTH EDGE OF THE PROPERTY.',
-    ],
-  },
-  shipyard: {
-    code: 'RHS',
-    location: `RUST HARBOR SHIPYARD, PIER ${redact(2)}`,
-    conditions: 'DAYLIGHT. DOCKWORKERS SENT HOME FOR A "SAFETY INSPECTION".',
-    situation: 'HOSTILES STOWED AWAY IN INBOUND CARGO. THE CONTAINER YARD IS NOW INFESTED.',
-    terrain: [
-      'CONTAINER MAZE: SOLID STEEL WALLS AND BLIND CORNERS. OPEN CONTAINERS ARE HIDING SPOTS.',
-      'HARBOR WATER TO THE NORTH IS IMPASSABLE. THE DOCK IS A DEAD END: DRIVE THEM TOWARD IT.',
-      'CRATES, BARRELS AND DUMPSTERS CAN BE JUMPED. CONTAINERS AND THE CRANE CANNOT.',
-      'EXTRACTION VAN IS ON THE SOUTH LOADING LANE.',
-    ],
-  },
-  neighborhood: {
-    code: 'MPL',
-    location: `MAPLE STREET, ${redact(8)} (RESIDENTIAL)`,
-    conditions: '0300 HRS LOCAL. NIGHT. RESIDENTS ARE ASLEEP. THIS IS A STEALTH OPERATION.',
-    situation: 'HOSTILES LANDED ON A SLEEPING SUBURBAN BLOCK. THE AGENCY CANNOT AFFORD WITNESSES.',
-    terrain: [
-      'A NOISE METER TRACKS HOW MUCH ATTENTION YOU ARE DRAWING. KEEP IT OUT OF THE RED.',
-      'SPRINTING RAISES NOISE THE WHOLE TIME YOU DO IT, UP TO 3X FASTER RIGHT OUTSIDE A HOUSE. WALK AND IT DRAINS BACK DOWN.',
-      'DASHES, MISSED DIVES AND GETTING STUNNED EACH CAUSE A SPIKE. A NOISE MAKER BANG IS HEARD BY THE WHOLE BLOCK.',
-      'FILL THE METER AND THE BLOCK WAKES UP: EVERY HIDING HOSTILE BOLTS FROM COVER AND YOU ARE FINED FOR THE COMPLAINT.',
-      'LAWNS, HEDGES AND PARKED CARS GIVE COVER. SAVE THE LOUD MOVES FOR THE MIDDLE OF THE ROAD, AWAY FROM WINDOWS.',
-      'EXTRACTION VAN IS PARKED ON THE MAIN STREET, WEST OF THE INTERSECTION.',
-    ],
-  },
-  tropical: {
-    code: 'ISV',
-    location: `ISLA VERDE, ${redact(6)} ARCHIPELAGO`,
-    conditions: 'DAYLIGHT. VOLCANIC HAZE. THE ISLAND IS UNINHABITED.',
-    situation: 'A CRAFT CRASHED INTO THE JUNGLE CANOPY. SURVIVORS HAVE SCATTERED ACROSS THE ISLAND.',
-    terrain: [
-      'OCEAN ON ALL SIDES. NOBODY LEAVES THE ISLAND EXCEPT IN THE VAN OR THE UFO.',
-      'AN ACTIVE VOLCANO SITS AT THE CENTER. IT IS IMPASSABLE, AND HOSTILES WILL CIRCLE IT TO SHAKE YOU.',
-      'FERNS, HUTS AND PALMS GIVE DENSE COVER EVERYWHERE. FERNS, LOGS AND ROCKS CAN BE JUMPED.',
-      'EXTRACTION VAN IS BEACHED ON THE WEST SHORE.',
-    ],
-  },
+  playground: { code: 'SPP', location: `SUNNY PINES PLAYGROUND, ${redact(7)} COUNTY` },
+  farmhouse: { code: 'HCF', location: `HOLLOW CREEK FARM, RURAL ROUTE ${redact(2)}` },
+  shipyard: { code: 'RHS', location: `RUST HARBOR SHIPYARD, PIER ${redact(2)}` },
+  neighborhood: { code: 'MPL', location: `MAPLE STREET, ${redact(6)}, 0300 HRS` },
+  tropical: { code: 'ISV', location: `ISLA VERDE, ${redact(6)} ARCHIPELAGO` },
 };
 
-const TIER_INTEL = {
-  grunt: { name: 'GRUNT', threat: 'LOW', cls: 'lo',
-    notes: 'SLOW. HIDES OFTEN. TACKLES IF YOU CORNER IT FOR TOO LONG.' },
-  scout: { name: 'SCOUT', threat: 'MODERATE', cls: 'md',
-    notes: 'FAST. PANIC-DASHES AWAY WHEN YOU GET CLOSE. TACKLES.' },
-  trooper: { name: 'TROOPER', threat: 'HIGH', cls: 'hi',
-    notes: 'ARMORED. YOUR FIRST GRAB ONLY KNOCKS THE HELMET OFF. FIRES STUN BOLTS. BEAMS OUT FASTER.' },
-  elite: { name: 'ELITE', threat: 'SEVERE', cls: 'sv',
-    notes: 'CLOAKS WHILE RUNNING. DASHES. FIRES STUN BOLTS. BEAMS OUT FASTEST.' },
+// What the popup says when you tap an alien card.
+export const TIER_INTEL = {
+  grunt: { name: 'GRUNT', threat: 'LOW', cls: 'lo', tags: ['SLOW', 'TACKLES'],
+    notes: 'The rank and file. Slow on its feet and hides a lot, so check the bushes. Corner one for too long and it will tackle you.' },
+  scout: { name: 'SCOUT', threat: 'MODERATE', cls: 'md', tags: ['FAST', 'DASHES', 'TACKLES'],
+    notes: 'Quick and jumpy. It panic-dashes away the moment you get close, so cut off its escape before you dive.' },
+  trooper: { name: 'TROOPER', threat: 'HIGH', cls: 'hi', tags: ['ARMORED', 'STUN BOLTS'],
+    notes: 'Armored: your first grab only knocks the helmet off. Fires stun bolts that make you drop whatever you carry, and the UFO beams it out faster.' },
+  elite: { name: 'ELITE', threat: 'SEVERE', cls: 'sv', tags: ['CLOAKS', 'FAST', 'STUN BOLTS'],
+    notes: 'Cloaks while running and is near-invisible. Dashes, fires stun bolts and beams out fastest. A Noise Maker bang knocks the cloak off.' },
 };
-const TIER_ORDER = ['grunt', 'scout', 'trooper', 'elite'];
+export const TIER_ORDER = ['grunt', 'scout', 'trooper', 'elite'];
 
 function todayStamp() {
   const d = new Date();
@@ -102,46 +49,10 @@ function caseNo(m) {
   return `AW-${String(m.id + 1).padStart(4, '0')}-${intel ? intel.code : 'UNK'}`;
 }
 
-// Equipment advisory tailored to what the agent actually owns.
-function advisories(m, fx) {
-  const out = [];
-  const has = (t) => (m.aliens[t] || 0) > 0;
-  const total = Object.values(m.aliens).reduce((a, b) => a + b, 0);
-  if (has('elite')) {
-    out.push(fx.noisemaker
-      ? 'ELITES CLOAK. YOUR NOISE MAKER KNOCKS THEM OUT OF CLOAK AND STUNS THEM. SET IT OFF WHEN ONE IS IN REACH.'
-      : 'ELITES CLOAK AND ARE NEAR-INVISIBLE WHILE RUNNING. A NOISE MAKER IS STRONGLY ADVISED. NOT CURRENTLY ISSUED.');
-    if (fx.drones >= 2) out.push('YOUR FIELD DRONES MK.II WILL TRACK CLOAKED ELITES OFF-SCREEN.');
-    else if (fx.drones) out.push('FIELD DRONES MK.I LOSE ELITES WHILE THEY ARE CLOAKED. MK.II DOES NOT.');
-  }
-  if (has('trooper') || has('elite')) {
-    out.push(fx.stunMul < 1
-      ? 'HOSTILES CARRY STUN PISTOLS. YOUR VEST WILL SHORTEN ANY STUN.'
-      : 'HOSTILES CARRY STUN PISTOLS. A STUN MAKES YOU DROP EVERYTHING YOU ARE CARRYING. JUMP THE BOLTS OR BREAK LINE OF SIGHT.');
-  }
-  if (has('trooper') && !fx.netgun) {
-    out.push('A NET PINS A TROOPER SO ITS ARMOR DOES NOT MATTER. THE NET GUN IS NOT CURRENTLY ISSUED.');
-  }
-  if (total >= 4 && fx.carryMax < 2) {
-    out.push(`${total} TARGETS AND YOU CAN CARRY ONE AT A TIME. AN ALIEN SACK WOULD SAVE YOU TRIPS TO THE VAN.`);
-  }
-  if (m.map === 'neighborhood' && fx.noisemaker) {
-    out.push('NOISE MAKER USE ON MAPLE STREET WILL ALMOST CERTAINLY WAKE THE BLOCK. ONLY IF YOU MUST.');
-  }
-  if (!fx.drones && total >= 5) {
-    out.push('FIELD DRONES WOULD POINT YOU TO LOOSE HOSTILES OFF-SCREEN. NOT CURRENTLY ISSUED.');
-  }
-  if (!out.length) out.push('CURRENT LOADOUT IS ADEQUATE FOR THIS OPERATION.');
-  return out;
-}
-
 /* ---------------- report ---------------- */
 
-export function buildReport(m, fx) {
+export function buildReport(m, assets) {
   const intel = MAP_INTEL[m.map] || MAP_INTEL.playground;
-  const total = Object.values(m.aliens).reduce((a, b) => a + b, 0);
-  const fee = abandonFee(m);
-  const best = save.bestPay[m.id];
 
   const paper = document.createElement('div');
   paper.className = 'paper';
@@ -153,60 +64,102 @@ export function buildReport(m, fx) {
     `<div class="doc-org">CENTRAL INTELLIGENCE AGENCY<small>DIRECTORATE OF EXTRATERRESTRIAL AFFAIRS</small></div></div>`);
 
   html.push(`<div class="doc-meta tw-block">` +
-    `<div><i>MEMO FOR:</i> FIELD AGENT "WRANGLER"</div>` +
-    `<div><i>FROM:</i> DEPUTY DIRECTOR ${redact(6)}</div>` +
-    `<div><i>DATE:</i> ${todayStamp()}</div>` +
-    `<div><i>CASE NO:</i> ${caseNo(m)}</div>` +
     `<div><i>SUBJECT:</i> OPERATION ${m.name.toUpperCase()}</div>` +
     `<div><i>LOCATION:</i> ${intel.location}</div>` +
+    `<div><i>CASE:</i> ${caseNo(m)} &middot; ${todayStamp()}</div>` +
     `</div>`);
 
-  const sec = (n, title, body) =>
-    html.push(`<div class="doc-sec tw-block"><div class="doc-h">${n}. ${title}</div>${body}</div>`);
-  const p = (t) => `<p>${t}</p>`;
-  const li = (items) => `<ul>${items.map(t => `<li>${t}</li>`).join('')}</ul>`;
+  html.push(`<div class="doc-sec tw-block"><div class="doc-h">SITUATION</div>` +
+    `<p>${(m.brief || m.desc || '').toUpperCase()}</p></div>`);
 
-  sec(1, 'SITUATION', p(intel.situation) + (m.desc ? p(m.desc.toUpperCase()) : '') + p(`CONDITIONS: ${intel.conditions}`));
-
-  const rows = TIER_ORDER.filter(t => m.aliens[t]).map(t => {
-    const ti = TIER_INTEL[t];
-    return `<div class="hostile"><div class="hostile-row"><b>${ti.name} &times;${m.aliens[t]}</b>` +
-      `<span class="threat ${ti.cls}">THREAT: ${ti.threat}</span></div><p>${ti.notes}</p></div>`;
-  }).join('');
-  sec(2, 'HOSTILE FORCES', rows +
-    p(`TOTAL: ${total} EBE${total === 1 ? '' : 'S'} (EXTRATERRESTRIAL BIOLOGICAL ENTITIES). ` +
-      'CORNER ONE FOR TOO LONG AND IT WILL TURN ON YOU.'));
-
-  sec(3, 'TIMEFRAME', li([
-    `OPERATIONAL WINDOW: ${clock(m.time)} (${m.time} SEC) FROM INSERTION.`,
-    'UFO INBOUND WARNING AT T-0:30. LOCATOR ARROWS TO EVERY LOOSE HOSTILE COME ONLINE AT T-0:25.',
-    'AT T-0:00 A RETRIEVAL CRAFT ARRIVES AND BEAMS SURVIVORS OUT ONE AT A TIME. YOU CAN STILL SNATCH ONE OUT OF THE BEAM IF YOU ARE FAST.',
-  ]));
-
-  sec(4, 'AREA OF OPERATIONS', li(intel.terrain));
-
-  const pay = [
-    `BASE PAY: $${m.pay}.`,
-    `DEDUCTION: -$${m.escapeCost} PER ESCAPED EBE${m.map === 'neighborhood' ? ' AND PER NOISE COMPLAINT' : ''}.`,
-    'AT LEAST ONE CAPTURE IS REQUIRED TO CLEAR THE OPERATION.',
+  // the op's numbers on one strip: time on the clock, pay and what an escape costs
+  const facts = [
+    ['WINDOW', clock(m.time)],
+    ['PAY', `$${m.pay}`],
+    ['PER ESCAPE', `-$${m.escapeCost}`],
   ];
-  if (fee) pay.push(`ABANDONING THE OPERATION FORFEITS ALL PAY AND COSTS A $${fee} CLEANUP FEE.`);
-  if (best !== undefined) pay.push(`YOUR BEST PAYOUT ON THIS CONTRACT: $${best}.`);
-  sec(5, 'COMPENSATION', li(pay));
+  if (m.map === 'neighborhood') facts.push(['PER COMPLAINT', `-$${m.escapeCost}`]);
+  html.push(`<div class="doc-facts tw-block">${facts.map(([k, v]) =>
+    `<div><i>${k}</i><b>${v}</b></div>`).join('')}</div>`);
 
-  sec(6, 'EQUIPMENT ADVISORY', li(advisories(m, fx)));
+  const cards = TIER_ORDER.filter(t => m.aliens[t]).map(t =>
+    `<button class="alien-card" data-tier="${t}"><canvas class="pixel-canvas"></canvas>` +
+    `<b>&times;${m.aliens[t]}</b><span>${TIER_INTEL[t].name}</span></button>`).join('');
+  html.push(`<div class="doc-sec tw-block"><div class="doc-h">HOSTILES <small>TAP ONE FOR INTEL</small></div>` +
+    `<div class="alien-cards">${cards}</div></div>`);
 
-  sec(7, 'ORDERS', p('LOCATE, CAPTURE AND SECURE ALL EBES IN THE EXTRACTION VAN BEFORE THE RETRIEVAL CRAFT ARRIVES.' +
-    (m.map === 'neighborhood' ? ' DO NOT WAKE THE RESIDENTS.' : ' NO WITNESSES. NO PHOTOGRAPHS.')));
-
-  html.push(`<div class="doc-sign tw-block"><div class="sig">/s/ ${redact(10)}</div>` +
-    `<div>DEPUTY DIRECTOR, EXTRATERRESTRIAL AFFAIRS</div><div class="doc-small">DESTROY AFTER READING.</div></div>`);
+  html.push(`<div class="doc-foot no-type"><span class="doc-small">DESTROY AFTER READING.</span>` +
+    `<div class="stamp">APPROVED<small>FOR DEPLOYMENT</small></div></div>`);
   html.push(`<div class="doc-class no-type">TOP SECRET // EBE // NOFORN</div>`);
-  html.push(`<div class="stamp no-type">APPROVED<small>FOR DEPLOYMENT</small></div>`);
 
   paper.innerHTML = html.join('');
   drawSeal(paper.querySelector('.doc-seal'));
+  for (const card of paper.querySelectorAll('.alien-card')) {
+    drawAlien(card.querySelector('canvas'), assets.actors.aliens[card.dataset.tier].down, 3);
+  }
+  wireIntel(paper, m, assets);
   return paper;
+}
+
+function drawAlien(cv, spr, sc) {
+  cv.width = spr.width * sc; cv.height = spr.height * sc;
+  const x = cv.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  x.drawImage(spr, 0, 0, cv.width, cv.height);
+}
+
+// Tap an alien card -> a small intel popup under it. Tap it again, the X, or
+// anywhere else on the paper to close.
+function wireIntel(paper, m, assets) {
+  let pop = null, openTier = null;
+  const close = () => {
+    if (pop) pop.remove();
+    pop = null; openTier = null;
+    paper.style.marginBottom = '';
+  };
+  paper.addEventListener('click', (e) => {
+    const card = e.target.closest('.alien-card');
+    if (!card) { if (pop && !e.target.closest('.intel-pop')) close(); return; }
+    e.stopPropagation();                   // don't let the pane treat it as "skip"
+    const tier = card.dataset.tier;
+    if (openTier === tier) { close(); sfx.click(); return; }
+    close();
+    sfx.click();
+    openTier = tier;
+    const ti = TIER_INTEL[tier];
+    pop = document.createElement('div');
+    pop.className = 'intel-pop';
+    pop.innerHTML =
+      `<div class="intel-top"><canvas class="pixel-canvas"></canvas>` +
+      `<div><b>${ti.name} &times;${m.aliens[tier]}</b><span class="threat ${ti.cls}">THREAT: ${ti.threat}</span></div>` +
+      `<button class="intel-x" aria-label="Close">&times;</button></div>` +
+      `<div class="intel-tags">${ti.tags.map(t => `<i>${t}</i>`).join('')}</div>` +
+      `<p>${ti.notes.toUpperCase()}</p>`;
+    drawAlien(pop.querySelector('canvas'), assets.actors.aliens[tier].down, 2);
+    pop.querySelector('.intel-x').addEventListener('click', (ev) => { ev.stopPropagation(); close(); sfx.click(); });
+    paper.appendChild(pop);
+    // Sit just under the card, kept inside the paper. If the visible part of
+    // the report has no room below (landscape, small phones) flip it above
+    // the card; if neither side fits, stay below and scroll it into view.
+    const pr = paper.getBoundingClientRect(), cr = card.getBoundingClientRect();
+    const w = pop.offsetWidth, h = pop.offsetHeight;
+    const left = Math.max(6, Math.min(pr.width - w - 6, cr.left - pr.left + cr.width / 2 - w / 2));
+    pop.style.left = `${left}px`;
+    pop.style.setProperty('--arrow-x', `${cr.left - pr.left + cr.width / 2 - left}px`);
+    const scroller = paper.parentElement;
+    const sr = scroller ? scroller.getBoundingClientRect() : { top: -1e9, bottom: 1e9 };
+    const below = sr.bottom - cr.bottom, above = cr.top - sr.top;
+    if (h + 8 > below && h + 8 <= above) {
+      pop.classList.add('above');
+      pop.style.top = `${cr.top - pr.top - h - 6}px`;
+    } else {
+      pop.style.top = `${cr.bottom - pr.top + 6}px`;
+      // make sure the page is long enough to scroll the whole popup into view
+      const overhang = (cr.bottom + 6 + h) - pr.bottom + 6;
+      if (overhang > 0) paper.style.marginBottom = `${overhang}px`;
+      if (scroller && h + 8 > below) scroller.scrollTop += h + 8 - below;
+    }
+  });
 }
 
 // 26x26 pixel agency seal: ring, star field and a tiny saucer.
@@ -244,21 +197,36 @@ function statRow(label, value, lv, max) {
   return `<div class="stat"><div class="stat-top"><span>${label}</span><b>${value}</b></div><div class="stat-bar">${bar}</div></div>`;
 }
 
-export function buildDossier(assets, fx, gear) {
+export function buildDossier(assets, fx, gear, onLoadout) {
   const lv = (id) => gear[id] || 0;
   const maxLv = (id) => (GEAR.find(g => g.id === id) || { levels: [] }).levels.length;
   const clearance = Math.min(5, 1 + Math.floor(save.missionsCleared / 3));
+  const mk = (g, l) => (g.levels.length > 1 ? `MK.${'I'.repeat(l)}` : 'ISSUED');
 
   const d = document.createElement('div');
   d.className = 'dossier';
   const pct = (m) => `${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}%`;
 
+  // two gadget slots; tap one to cycle what's in it, or swap them
+  const lo = resolveLoadout(gear);
+  const owned = ownedGadgets(gear);
+  const slots = [0, 1].map(i => {
+    const g = lo[i] && GEAR.find(x => x.id === lo[i]);
+    const body = g
+      ? `<span class="tool-ico">${g.icon}</span><span>${g.name.toUpperCase()}<small>${mk(g, lv(g.id))}</small></span>`
+      : `<span class="tool-ico">&middot;</span><span>EMPTY<small>${i === 0 ? 'TAP = GRAB' : 'BUY A GADGET'}</small></span>`;
+    return `<button class="slot ${g ? 'on' : 'off'}" data-slot="${i}" ${owned.length > 1 ? '' : 'disabled'}>` +
+      `<em>SLOT ${i + 1} &middot; ${slotControl(i)}</em><div class="slot-body">${body}</div></button>`;
+  }).join('');
+  const swap = owned.length > 1 ? `<button class="slot-swap">SWAP SLOTS</button>` : '';
+
   const tools = [];
   tools.push(`<div class="tool on"><span class="tool-ico">\u{270B}</span><span>GRAB &amp; DIVE<small>STANDARD ISSUE</small></span></div>`);
   for (const g of GEAR) {
     if (['shoes', 'stamina', 'gloves', 'kneepads', 'vest'].includes(g.id)) continue;   // shown as stats
+    if (g.gadget && lo.includes(g.id)) continue;                                          // shown as a slot
     const l = lv(g.id);
-    const tag = l ? (g.levels.length > 1 ? `MK.${'I'.repeat(l)}` : 'ISSUED') : 'NOT ISSUED';
+    const tag = g.gadget && l ? 'IN LOCKER' : l ? mk(g, l) : 'NOT ISSUED';
     tools.push(`<div class="tool ${l ? 'on' : 'off'}"><span class="tool-ico">${g.icon}</span>` +
       `<span>${g.name.toUpperCase()}${g.perk ? ' <em>PERK</em>' : ''}<small>${tag}</small></span></div>`);
   }
@@ -280,8 +248,17 @@ export function buildDossier(assets, fx, gear) {
     statRow('GET-UP TIME', `${(1.05 * fx.recoveryMul).toFixed(2)}s`, lv('kneepads'), maxLv('kneepads')) +
     statRow('STUN TIME', `${Math.round(fx.stunMul * 100)}%`, lv('vest'), maxLv('vest')) +
     statRow('CARRY', `${fx.carryMax}`, lv('sack'), maxLv('sack')) +
+    `<div class="dos-sec">GADGETS <small>2 MAX</small></div>` +
+    `<div class="slots">${slots}</div>${swap}` +
     `<div class="dos-sec">TOOLS</div>` +
     `<div class="tools">${tools.join('')}</div>`;
+
+  const changed = () => { sfx.click(); if (onLoadout) onLoadout(); };
+  d.querySelectorAll('.slot').forEach(b => b.addEventListener('click', () => {
+    cycleSlot(gear, +b.dataset.slot); changed();
+  }));
+  const sw = d.querySelector('.slot-swap');
+  if (sw) sw.addEventListener('click', () => { swapSlots(gear); changed(); });
 
   // the agent's mugshot, scaled up crisp
   const cv = d.querySelector('.mug-sprite');
@@ -298,7 +275,7 @@ export function buildDossier(assets, fx, gear) {
 
 // Blank every typed text node in `paper`, then type them back in order. Tap
 // anywhere on the scroller to finish instantly. Returns { finish, done }.
-export function typewrite(paper, { scroller, cps = 230, onDone } = {}) {
+export function typewrite(paper, { scroller, cps = 150, onDone } = {}) {
   const nodes = [];
   const walker = document.createTreeWalker(paper, NodeFilter.SHOW_TEXT);
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
