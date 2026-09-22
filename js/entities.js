@@ -28,6 +28,7 @@ export class Player {
     this.dashCd = 0;
     this.grabCd = 0;
     this.netCd = 0;
+    this.noiseCd = 0;
     this.walkT = 0;
     this.moving = false;
     this.diveHit = false;
@@ -53,9 +54,22 @@ export class Player {
     return true;
   }
 
-  tryDash() {
+  // Point the agent along a gesture's direction (swipe-to-dive/dash). Buttons
+  // mode passes nothing and keeps using the way you're already facing.
+  aim(dir) {
+    if (!dir) return;
+    const len = Math.hypot(dir.x, dir.y);
+    if (len < 0.001) return;
+    this.dir.x = dir.x / len;
+    this.dir.y = dir.y / len;
+    this.facing = faceFrom(this.dir.x, this.dir.y);
+  }
+
+  tryDash(dir) {
     if (!this.canAct || this.dashCd > 0) return false;
-    if (!this.spendStamina(18)) return false;
+    if (this.stamina < 18) return false;
+    this.aim(dir);
+    this.spendStamina(18);
     this.state = 'dashing';
     this.stateT = 0.16;
     this.dashCd = 1.1;
@@ -64,9 +78,11 @@ export class Player {
     return true;
   }
 
-  tryDive() {
+  tryDive(dir) {
     if (!this.canAct || this.airborne) return false;
-    if (!this.spendStamina(22)) return false;
+    if (this.stamina < 22) return false;
+    this.aim(dir);
+    this.spendStamina(22);
     this.state = 'diving';
     this.stateT = 0.32;
     this.diveHit = false;
@@ -93,6 +109,7 @@ export class Player {
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.grabCd = Math.max(0, this.grabCd - dt);
     this.netCd = Math.max(0, this.netCd - dt);
+    this.noiseCd = Math.max(0, this.noiseCd - dt);
     this.stateT -= dt;
 
     // vertical (jump)
@@ -150,6 +167,11 @@ export class Player {
     // silently resume the instant stamina regens — re-press required
     if (moveIn.sprintToggle && this.moving && this.stamina <= 1) {
       moveIn.sprintToggle = false;
+      updateSprintVisual();
+    }
+    // same for a no-buttons hold: stop draining, lift + press again to resume
+    if (moveIn.sprintHold > 0 && !moveIn.holdSpent && this.moving && this.stamina <= 1) {
+      moveIn.holdSpent = true;
       updateSprintVisual();
     }
     const top = (sprinting ? this.sprintSpeed : this.baseSpeed) * this.carryPenalty * (this.moving ? mag : 0);
@@ -216,6 +238,7 @@ export class Alien {
     this.rustleT = 1 + Math.random() * 3;
     this.wanderT = 0;
     this.alpha = 1;
+    this.revealT = 0;            // Noise Maker ping: marked + can't cloak while > 0
   }
 
   get free() { return ['hiding', 'running', 'attack', 'netted', 'stunned'].includes(this.state); }
@@ -241,6 +264,7 @@ export class Alien {
     const st = this.stats;
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.boltCd = Math.max(0, this.boltCd - dt);
+    this.revealT = Math.max(0, this.revealT - dt);
 
     // hop physics
     if (this.z > 0 || this.zv !== 0) {
@@ -250,8 +274,8 @@ export class Alien {
 
     const distP = Math.hypot(p.x - this.x, p.y - this.y);
 
-    // Elite cloaking while loose
-    if (st.cloak && (this.state === 'running' || this.state === 'attack')) {
+    // Elite cloaking while loose (a Noise Maker bang scrambles it for a while)
+    if (st.cloak && this.revealT <= 0 && (this.state === 'running' || this.state === 'attack')) {
       this.cloakT -= dt;
       if (this.cloakT <= 0) {
         this.cloaked = !this.cloaked;

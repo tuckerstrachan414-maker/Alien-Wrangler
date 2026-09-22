@@ -26,6 +26,12 @@ the map at the same zoom).
 ## 📺 Menus
 
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
+- **MISSION BRIEFING** — deploying on a contract opens a classified CIA memo that types itself out
+  (with typewriter sound) beside your personnel file. The memo covers the hostiles and how many of each,
+  the time window before the UFO arrives, map intel (Maple Street's noise rules, the cornfield, the container
+  maze, the volcano…), the pay and deductions, and an equipment advisory based on the gear you actually own.
+  The personnel file shows your agent, clearance, record, field stats and the tools you've been issued.
+  Tap the report to skip the typing, **GEAR UP** to visit the shop and come back, **BEGIN OP** to deploy.
 - **SETTINGS** — sound on/off, SFX volume, control scheme, gesture hints, and save data.
 - **SANDBOX** — free play. Pick any map, any alien roster, any time limit (including **no limit**,
   so the UFO never comes) and any gear level, with everything unlocked. Nothing is paid out and
@@ -41,27 +47,28 @@ Both work in portrait and landscape.
 | Zone | Control |
 |---|---|
 | Left thumb | Floating joystick to move |
-| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) |
+| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · **NET** (once you buy the Net Gun) · **NOISE** (once you buy the Noise Maker) |
 
 ### No-buttons mode
 
-The screen splits down the middle — no on-screen buttons at all.
+The screen splits down the middle: the left thumb is your **legs**, the right thumb is your **hands**.
+Nothing the right thumb does ever interrupts walking.
 
 | Half | Gesture | Action |
 |---|---|---|
 | Left | Drag anywhere | Move (the stick spawns under your thumb) |
-| Left | Flick **up** | Dash |
-| Left | Double-tap | Toggle sprint (a SPRINT pill shows in the HUD) |
+| Left | Flick **up** | Jump (you keep walking) |
+| Left | Walk into a fence / bale / crate | Vault it automatically |
+| Left | Double-tap | Noise Maker (needs the Noise Maker) |
 | Right | Tap | Grab |
+| Right | **Hold** | Sprint for as long as you hold (a ring sits under your thumb) |
+| Right | **Swipe any direction** | Dive that way, with a little aim assist toward the alien you swiped at. If nothing is in reach, it's a dash instead, so you never eat dirt diving at nothing |
 | Right | Double-tap | Fire the net gun (needs the Net Gun) |
-| Right | Flick **up** | Dive |
-| Right | Flick **down** | Jump |
 
-A flick has to be fast and mostly vertical, so walking your thumb upward to head north
-never trips a dash or a dive. A small legend in the bottom corners reminds you of the
-gestures and dims when an action is on cooldown — turn it off in Settings once you know them.
+A swipe has to be quick, so slow thumb drift never trips a dive. A small legend in the bottom corners
+reminds you of the gestures and dims when an action is on cooldown. Turn it off in Settings once you know them.
 
-Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, N net, P pause.
+Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, N net, B noise maker, P pause.
 
 ## ⏸️ Pausing
 
@@ -87,7 +94,7 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 | 🟢 Grunt | Basic. Slow-ish. Still slippery. |
 | 🔵 Scout | Fast, with a panic dash when you get close. |
 | ⚪ Trooper | Armored — your first grab knocks the helmet off. Fires stun bolts. |
-| 🟣 Elite | Cloaks while running, dashes, shoots. Bring the goggles. |
+| 🟣 Elite | Cloaks while running, dashes, shoots. A Noise Maker bang knocks it out of cloak. |
 
 ## 🗺️ Maps
 
@@ -106,7 +113,19 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 ## 🧰 Equipment shop
 
 Track Shoes · Field Training (stamina) · Grip Gloves · Kneepads · Alien Sack ·
-Tracker Goggles · Net Gun · Stun-Proof Vest
+Noise Maker · Net Gun · Stun-Proof Vest
+
+- **Noise Maker** (replaces the old Tracker Goggles; if you owned goggles, you keep that level as a Noise Maker)
+  sets off a deafening **BANG** around you. Aliens close by are knocked out of hiding, out of cloak and
+  even out of the UFO's beam, then stunned. Hidden aliens further out get pinged with a marker for a few seconds.
+  Mk.I: 2s stun in 72px, ping 140px, 14s reload. Mk.II: 2.8s stun in 100px, ping 220px, 10s reload.
+  On Maple Street a bang is the loudest thing you can do, so expect to wake the block.
+
+**Perks**
+
+- **Field Drones**: two little recon drones ride along above you. When a loose alien (one that isn't
+  hiding) is off-screen, the drones pin an arrow to the screen edge pointing at it. Mk.I loses Elites while
+  they're cloaked. Mk.II sees through the cloak, colours each arrow by alien tier and shows the range in metres.
 
 ### Gadget brainstorm (future)
 
@@ -116,7 +135,6 @@ Ideas on the table for the next batch — pick favorites:
 - **Trap Cage** — place it in an alley, aliens that run over it get boxed
 - **Cardboard Box** — crouch disguise; hidden aliens don't flush while you wear it
 - **Grapple Hook** — yank yourself over containers / across the map
-- **Drone Scout** — auto-pings one hidden alien at mission start
 - **EMP Grenade** — disables Elite cloaks and Trooper pistols for 10s
 - **Roller Shoes** — hold sprint downhill… everywhere
 - **Decoy Agent** — inflatable agent that aliens flee from, herding them toward you
@@ -139,7 +157,8 @@ js/game.js          mission controller, capture/deposit, UFO beam, rendering
 js/entities.js      player movement + alien AI (hide / run / attack)
 js/nav.js           nav grid, BFS pathfinding, collision
 js/input.js         joystick + buttons, split-screen gesture scheme, keyboard fallback
-js/ui.js            title / play hub / missions / shop / settings / sandbox / results / pause
+js/ui.js            title / play hub / missions / briefing / shop / settings / sandbox / results / pause
+js/briefing.js      mission brief: CIA memo builder, typewriter effect, personnel file
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/maps.js     the five maps
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog

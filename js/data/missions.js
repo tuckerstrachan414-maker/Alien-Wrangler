@@ -49,12 +49,12 @@ export const MISSIONS = [
   },
   {
     id: 9, map: 'tropical', name: 'Volcano Rising',
-    desc: 'Elites hiding in the ferns while the volcano rumbles. Bring the goggles.',
+    desc: 'Elites hiding in the ferns while the volcano rumbles. A Noise Maker will shake them loose.',
     aliens: { grunt: 1, scout: 2, trooper: 2, elite: 1 }, time: 145, pay: 720, escapeCost: 90,
   },
   {
     id: 10, map: 'playground', name: 'Night Shift',
-    desc: 'An Elite is on-site: it cloaks. Goggles strongly advised.',
+    desc: 'An Elite is on-site: it cloaks. A Noise Maker bang knocks the cloak right off it.',
     aliens: { scout: 2, trooper: 2, elite: 1 }, time: 140, pay: 700, escapeCost: 90,
   },
   {
@@ -182,11 +182,11 @@ export const GEAR = [
     ],
   },
   {
-    id: 'goggles', name: 'Tracker Goggles', icon: '\u{1F97D}',
-    desc: 'Reveals hidden and cloaked aliens with a marker when nearby.',
+    id: 'noisemaker', name: 'Noise Maker', icon: '\u{1F4A5}',
+    desc: 'Set off a deafening BANG: aliens close by are stunned and knocked out of hiding (and out of cloak); hidden ones further out get pinged.',
     levels: [
-      { price: 450, label: 'Detect at 110px' },
-      { price: 1200, label: 'Detect anywhere' },
+      { price: 450, label: 'Stun 2s in 72px, ping 140px, 14s reload' },
+      { price: 1200, label: 'Mk.II \u2014 stun 2.8s in 100px, ping 220px, 10s reload' },
     ],
   },
   {
@@ -205,6 +205,21 @@ export const GEAR = [
       { price: 800, label: '-70% stun time' },
     ],
   },
+  {
+    id: 'drones', name: 'Field Drones', icon: '\u{1F4E1}', perk: true,
+    desc: 'A pair of recon drones rides with you and marks loose aliens off-screen with an arrow. Hidden aliens stay hidden.',
+    levels: [
+      { price: 600, label: 'Arrows to loose aliens off-screen' },
+      { price: 1400, label: 'Mk.II \u2014 tracks cloaked Elites, tier colors + range' },
+    ],
+  },
+];
+
+// Noise Maker tuning per level (index = level). Radii are world px.
+export const NOISE_MAKER = [
+  null,
+  { stunR: 72, stunT: 2.0, pingR: 140, pingT: 5, cd: 14 },
+  { stunR: 100, stunT: 2.8, pingR: 220, pingT: 7, cd: 10 },
 ];
 
 // Compute an effect value from gear levels (lv = 0 means not owned)
@@ -216,7 +231,8 @@ export function gearEffects(levels) {
     grabMul: 1 + [0, 0.2, 0.4, 0.65][lv('gloves')],
     recoveryMul: [1, 0.65, 0.4][lv('kneepads')],
     carryMax: [1, 2, 3][lv('sack')],
-    goggleRange: [0, 110, 9999][lv('goggles')],
+    noisemaker: lv('noisemaker'), // 0 none, 1 mk1, 2 mk2
+    drones: lv('drones'),         // 0 none, 1 mk1, 2 mk2
     netgun: lv('netgun'), // 0 none, 1 mk1, 2 mk2
     stunMul: [1, 0.6, 0.3][lv('vest')],
   };

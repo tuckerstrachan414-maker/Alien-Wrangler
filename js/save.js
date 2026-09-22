@@ -36,6 +36,17 @@ function normalize() {
     time: typeof sb.time === 'number' ? sb.time : DEFAULT.sandbox.time,
     gear: { ...(sb.gear || {}) },
   };
+  if (!save.gear || typeof save.gear !== 'object') save.gear = {};
+  migrateGear(save.gear);
+  migrateGear(save.sandbox.gear);
+}
+
+// Tracker Goggles were replaced by the Noise Maker (same two price tiers), so
+// anyone who bought goggles keeps what they paid for as the same Noise Maker level.
+function migrateGear(gear) {
+  if (!gear.goggles) { delete gear.goggles; return; }
+  gear.noisemaker = Math.max(gear.noisemaker || 0, Math.min(2, gear.goggles));
+  delete gear.goggles;
 }
 
 export function loadSave() {
