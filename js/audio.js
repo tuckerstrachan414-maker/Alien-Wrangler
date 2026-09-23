@@ -68,6 +68,8 @@ export const sfx = {
   grab:    () => { tone(500, 0.07, 'square', 0.1, 300); tone(820, 0.09, 'square', 0.08, 200, 0.06); },
   deposit: () => { tone(520, 0.08, 'square', 0.1); tone(660, 0.08, 'square', 0.1, 0, 0.08); tone(880, 0.12, 'square', 0.1, 0, 0.16); },
   cash:    () => { tone(980, 0.06, 'square', 0.08); tone(1320, 0.1, 'square', 0.08, 0, 0.06); },
+  // Skills upgrade: a rising 3-note power-up chime.
+  levelUp: () => { [520, 780, 1040].forEach((f, i) => tone(f, 0.12, 'square', 0.09, 0, i * 0.07)); tone(1560, 0.2, 'triangle', 0.06, 0, 0.21); },
   alert:   () => tone(700, 0.1, 'square', 0.07, -200),
   squeak:  () => tone(900, 0.1, 'square', 0.06, 420),
   stun:    () => { tone(140, 0.3, 'sawtooth', 0.12, -60); noise(0.15, 0.08); },

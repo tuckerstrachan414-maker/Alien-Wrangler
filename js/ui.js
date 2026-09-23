@@ -1,11 +1,12 @@
 import {
-  MISSIONS, getMission, GEAR, MAP_LIST, SANDBOX_TIMES,
+  MISSIONS, getMission, GEAR, GADGETS, ADVANCED_GEAR, STAT_GEAR, MAP_LIST, SANDBOX_TIMES,
   sandboxMission, gearMaxLevel, abandonFee, gearEffects,
 } from './data/missions.js';
 import { save, persist, resetSave } from './save.js';
 import { sfx } from './audio.js';
-import { buildReport, buildDossier, typewrite } from './briefing.js';
+import { buildReport, buildDossier, typewrite, renderMugshot, statRow } from './briefing.js';
 import { resolveLoadout, equipGadget, cycleSlot, slotControl, ownedGadgets } from './loadout.js';
+import { resolveAdvanced, equipAdvanced, cycleAdvancedSlot, ownedAdvanced } from './advancedGear.js';
 
 const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
@@ -107,7 +108,7 @@ export class UI {
     s.appendChild(this.bigBtn('DEPLOY',
       `Mission ${Math.min(save.missionsCleared + 1, 99)} &mdash; take a contract`,
       'primary', () => this.showMissions()));
-    s.appendChild(this.bigBtn('EQUIPMENT', 'Spend your bank on upgrades', '', () => this.showShop('play')));
+    s.appendChild(this.bigBtn('EQUIPMENT', 'Spend your bank on upgrades', '', () => this.showEquipment('play')));
     s.appendChild(this.el('div', 'menu-spacer'));
     s.appendChild(this.btn('BACK', '', () => this.showTitle()));
   }
@@ -189,7 +190,7 @@ export class UI {
 
     const foot = this.el('div', 'brief-foot');
     foot.appendChild(this.btn('BACK', '', () => this.showMissions()));
-    foot.appendChild(this.btn('GEAR UP', '', () => this.showShop('brief')));
+    foot.appendChild(this.btn('GEAR UP', '', () => this.showEquipment('brief')));
     const go = this.btn('BEGIN OP', 'primary go', () => this.actions.startMission(n));
     foot.appendChild(go);
     s.appendChild(foot);
@@ -207,25 +208,29 @@ export class UI {
     reportPane.addEventListener('click', () => { if (!tw.done) tw.finish(); });
   }
 
-  /* ---------------- shop ---------------- */
+  /* ---------------- equipment / skills ---------------- */
 
-  showShop(backTo = 'play') {
+  showEquipment(backTo = 'play', tab) {
+    this._equipTab = tab || this._equipTab || 'gear';
     const s = this.screen();
     s.appendChild(this.el('div', 'game-title', 'EQUIPMENT'));
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
-    const list = this.el('div', 'card-list');
-    s.appendChild(list);
 
-    const groups = [
-      ['GEAR', GEAR.filter(g => !g.gadget && !g.perk)],
-      ['GADGETS &middot; EQUIP 2', GEAR.filter(g => g.gadget)],
-      ['PERKS', GEAR.filter(g => g.perk)],
-    ];
-    const loadout = resolveLoadout(save.gear);
-    for (const [label, items] of groups) {
-      list.appendChild(this.el('div', 'section-label wide', label));
-      for (const g of items) list.appendChild(this.gearCard(g, loadout, backTo));
+    const tabs = this.el('div', 'view-tabs');
+    for (const [id, label] of [['gear', 'GEAR'], ['skills', 'SKILLS']]) {
+      const t = this.el('button', `view-tab ${this._equipTab === id ? 'on' : ''}`, label);
+      t.addEventListener('click', () => {
+        if (this._equipTab === id) return;
+        sfx.click();
+        this._equipTab = id;
+        this.redrawEquipment(backTo);
+      });
+      tabs.appendChild(t);
     }
+    s.appendChild(tabs);
+
+    s.appendChild(this._equipTab === 'skills' ? this.skillsView(backTo) : this.gearCarousel(backTo));
+
     const back = {
       missions: () => this.showMissions(),
       title: () => this.showTitle(),
@@ -235,28 +240,71 @@ export class UI {
     if (backTo !== 'brief') s.appendChild(this.btn('BACK', '', back));
   }
 
-  // Re-open the shop where it was scrolled to (after a purchase or an equip).
-  redrawShop(backTo) {
+  // Re-open equipment where it was scrolled to (after a purchase or an equip).
+  redrawEquipment(backTo) {
     const old = this.root.querySelector('.screen');
     const top = old ? old.scrollTop : 0;
-    this.showShop(backTo);
+    const oldCar = old ? old.querySelector('.carousel') : null;
+    const left = oldCar ? oldCar.scrollLeft : 0;
+    this.showEquipment(backTo);
     const fresh = this.root.querySelector('.screen');
     if (fresh) fresh.scrollTop = top;
+    const freshCar = fresh ? fresh.querySelector('.carousel') : null;
+    if (freshCar) freshCar.scrollLeft = left;
   }
 
-  // One shop card: level stars, the next upgrade and BUY, plus the slot
-  // picker once you own a gadget.
-  gearCard(g, loadout, backTo) {
+  /* ---- GEAR tab: a horizontal scrolling wheel of weapons/tools ---- */
+
+  gearCarousel(backTo) {
+    const items = [...GADGETS, ...ADVANCED_GEAR];
+    const loadout = resolveLoadout(save.gear);
+    const advanced = resolveAdvanced(save.gear);
+    const redraw = () => this.redrawEquipment(backTo);
+
+    const wrap = this.el('div', 'carousel-wrap');
+    const prev = this.el('button', 'carousel-nav prev', '<i class="arr lt"></i>');
+    const car = this.el('div', 'carousel');
+    const next = this.el('button', 'carousel-nav next', '<i class="arr rt"></i>');
+    for (const g of items) car.appendChild(this.gearWheelCard(g, loadout, advanced, redraw));
+    prev.addEventListener('click', () => { sfx.click(); this.scrollCarousel(car, -1); });
+    next.addEventListener('click', () => { sfx.click(); this.scrollCarousel(car, 1); });
+    wrap.appendChild(prev);
+    wrap.appendChild(car);
+    wrap.appendChild(next);
+    this.wireGearIntel(wrap, car, items);
+    return wrap;
+  }
+
+  // Step the carousel to the previous/next item, snapping it to center.
+  scrollCarousel(car, dir) {
+    const items = [...car.children];
+    if (!items.length) return;
+    const mid = car.getBoundingClientRect().left + car.getBoundingClientRect().width / 2;
+    let idx = 0, best = Infinity;
+    items.forEach((it, i) => {
+      const r = it.getBoundingClientRect();
+      const d = Math.abs(r.left + r.width / 2 - mid);
+      if (d < best) { best = d; idx = i; }
+    });
+    const target = items[Math.max(0, Math.min(items.length - 1, idx + dir))];
+    target.scrollIntoView({ behavior: 'smooth', inline: 'center', block: 'nearest' });
+  }
+
+  // One carousel card: icon (a solid black silhouette until owned), level
+  // stars, BUY, then whichever equip control applies (2 shared gadget slots,
+  // or the single advanced-gear slot).
+  gearWheelCard(g, loadout, advanced, redraw) {
     const lv = save.gear[g.id] || 0;
+    const locked = lv === 0;
     const maxed = lv >= g.levels.length;
     const next = maxed ? null : g.levels[lv];
-    const card = this.el('div', 'card');
-    const head = this.el('div', 'card-head');
-    head.appendChild(this.el('div', 'card-title', `${g.icon} ${g.name}`));
-    head.appendChild(this.el('div', 'stars', '&#9733;'.repeat(lv) + '<span style="opacity:0.25">' + '&#9733;'.repeat(g.levels.length - lv) + '</span>'));
-    card.appendChild(head);
-    card.appendChild(this.el('div', 'card-desc',
-      `${g.desc}<br>${maxed ? '<b>MAXED OUT</b>' : `Next: ${next.label}`}`));
+    const card = this.el('div', `carousel-item ${locked ? 'locked' : ''}`);
+    card.dataset.gearId = g.id;
+    card.appendChild(this.el('div', 'gear-ico', g.icon));
+    card.appendChild(this.el('div', 'gear-name', g.name.toUpperCase()));
+    if (locked) card.appendChild(this.el('div', 'slot-row-note', 'NOT OWNED'));
+    else card.appendChild(this.el('div', 'stars', '&#9733;'.repeat(lv) + '<span style="opacity:0.25">' + '&#9733;'.repeat(g.levels.length - lv) + '</span>'));
+
     const row = this.el('div', 'card-row');
     if (!maxed) {
       const afford = save.cash >= next.price;
@@ -266,7 +314,7 @@ export class UI {
         save.gear[g.id] = lv + 1;
         persist();
         sfx.cash();
-        this.redrawShop(backTo);
+        redraw();
       });
       buy.disabled = !afford;
       row.appendChild(buy);
@@ -274,11 +322,13 @@ export class UI {
       row.appendChild(this.el('div', 'done', 'FULLY UPGRADED'));
     }
     card.appendChild(row);
-    if (g.gadget && lv > 0) card.appendChild(this.slotPicker(g.id, loadout, () => this.redrawShop(backTo)));
+
+    if (lv > 0 && g.gadget) card.appendChild(this.slotPicker(g.id, loadout, redraw));
+    if (lv > 0 && g.advanced) card.appendChild(this.advancedPicker(g.id, advanced, redraw));
     return card;
   }
 
-  // "EQUIP TO" row on an owned gadget's shop card: one chip per slot.
+  // "EQUIP TO" row on an owned gadget's card: one chip per shared slot.
   slotPicker(id, loadout, redraw) {
     const row = this.el('div', 'card-row slot-row');
     row.appendChild(this.el('div', 'slot-row-label', 'EQUIP'));
@@ -292,6 +342,108 @@ export class UI {
     }
     if (!loadout.includes(id)) row.appendChild(this.el('div', 'slot-row-note', 'IN LOCKER'));
     return row;
+  }
+
+  // Single EQUIP toggle for advanced gear — only one can be active at a time.
+  advancedPicker(id, current, redraw) {
+    const row = this.el('div', 'card-row slot-row');
+    row.appendChild(this.el('div', 'slot-row-label', 'EQUIP'));
+    const on = current === id;
+    row.appendChild(this.chip(on ? 'EQUIPPED' : 'EQUIP', '', on, 'narrow', () => {
+      equipAdvanced(save.gear, id);
+      redraw();
+    }));
+    return row;
+  }
+
+  // Tap a carousel card (not one of its buttons) -> a small description
+  // popup under it, adapted from the mission-briefing intel popup.
+  wireGearIntel(wrap, car, items) {
+    let pop = null, openId = null;
+    const close = () => { if (pop) pop.remove(); pop = null; openId = null; };
+    car.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return;
+      const card = e.target.closest('.carousel-item');
+      if (!card) { if (pop && !e.target.closest('.intel-pop')) close(); return; }
+      e.stopPropagation();
+      const id = card.dataset.gearId;
+      if (openId === id) { close(); sfx.click(); return; }
+      close();
+      sfx.click();
+      openId = id;
+      const g = items.find(x => x.id === id);
+      const locked = (save.gear[id] || 0) === 0;
+      pop = this.el('div', 'intel-pop');
+      pop.innerHTML =
+        `<div class="intel-top"><span class="gear-ico small${locked ? ' locked' : ''}">${g.icon}</span>` +
+        `<div><b>${g.name.toUpperCase()}</b></div>` +
+        `<button class="intel-x" aria-label="Close">&times;</button></div>` +
+        `<p>${g.desc.toUpperCase()}</p>`;
+      pop.querySelector('.intel-x').addEventListener('click', (ev) => { ev.stopPropagation(); close(); sfx.click(); });
+      wrap.appendChild(pop);
+      const pr = wrap.getBoundingClientRect(), cr = card.getBoundingClientRect();
+      const w = pop.offsetWidth;
+      const left = Math.max(6, Math.min(pr.width - w - 6, cr.left - pr.left + cr.width / 2 - w / 2));
+      pop.style.left = `${left}px`;
+      pop.style.setProperty('--arrow-x', `${cr.left - pr.left + cr.width / 2 - left}px`);
+      pop.style.top = `${cr.bottom - pr.top + 8}px`;
+    });
+  }
+
+  /* ---- SKILLS tab: character on the left, stat upgrades on the right ---- */
+
+  skillsView(backTo) {
+    const justLeveled = this._justLeveledUp;
+    this._justLeveledUp = false;
+
+    const wrap = this.el('div', 'skills-view');
+    const mugPane = this.el('div', 'skills-mug-pane');
+    const mug = this.el('div', `mug ${justLeveled ? 'leveling-up' : ''}`);
+    mug.innerHTML = '<div class="mug-lines"></div><canvas class="mug-sprite pixel-canvas"></canvas>' +
+      '<div class="mug-plate">AGENT "WRANGLER"</div>';
+    mugPane.appendChild(mug);
+    renderMugshot(mug.querySelector('.mug-sprite'), this.assets.actors.player.down);
+    wrap.appendChild(mugPane);
+
+    const statsPane = this.el('div', 'skills-stats-pane');
+    const fx = gearEffects(save.gear);
+    const pct = (m) => `${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}%`;
+    const STAT_LABEL = { shoes: 'SPEED', stamina: 'STAMINA', gloves: 'GRAB REACH', kneepads: 'GET-UP TIME', vest: 'STUN TIME', sack: 'CARRY' };
+    const STAT_VALUE = {
+      shoes: pct(fx.speedMul), stamina: `${fx.staminaMax}`, gloves: pct(fx.grabMul),
+      kneepads: `${(1.05 * fx.recoveryMul).toFixed(2)}s`, vest: `${Math.round(fx.stunMul * 100)}%`, sack: `${fx.carryMax}`,
+    };
+    for (const g of STAT_GEAR) {
+      const lv = save.gear[g.id] || 0;
+      const maxed = lv >= g.levels.length;
+      const next = maxed ? null : g.levels[lv];
+      const card = this.el('div', 'card skill-card');
+      card.appendChild(this.el('div', 'card-title', `${g.icon} ${g.name}`));
+      card.appendChild(this.el('div', '', statRow(STAT_LABEL[g.id], STAT_VALUE[g.id], lv, g.levels.length)));
+      card.appendChild(this.el('div', 'card-desc',
+        `${g.desc}<br>${maxed ? '<b>MAXED OUT</b>' : `Next: ${next.label}`}`));
+      const row = this.el('div', 'card-row');
+      if (!maxed) {
+        const afford = save.cash >= next.price;
+        const upgrade = this.btn(`UPGRADE &mdash; $${next.price}`, afford ? 'primary' : '', () => {
+          if (save.cash < next.price) return;
+          save.cash -= next.price;
+          save.gear[g.id] = lv + 1;
+          persist();
+          sfx.levelUp();
+          this._justLeveledUp = true;
+          this.redrawEquipment(backTo);
+        });
+        upgrade.disabled = !afford;
+        row.appendChild(upgrade);
+      } else {
+        row.appendChild(this.el('div', 'done', 'FULLY UPGRADED'));
+      }
+      card.appendChild(row);
+      statsPane.appendChild(card);
+    }
+    wrap.appendChild(statsPane);
+    return wrap;
   }
 
   /* ---------------- settings ---------------- */
@@ -529,6 +681,7 @@ export class UI {
         persist();
         redraw();
         if (g.gadget) drawSlots();
+        if (g.advanced) drawAdvanced();
       };
       box.appendChild(this.stepBtn('&minus;', () => step(-1)));
       box.appendChild(meter);
@@ -562,6 +715,26 @@ export class UI {
     gearRows.push(drawSlots);
     drawSlots();
     s.appendChild(slotRow);
+
+    // the one advanced-gear item that rides along (tap to cycle owned ones)
+    const advRow = this.el('div', 'opt-row');
+    advRow.appendChild(this.el('div', 'opt-name', 'ADVANCED GEAR<small>One rides along &middot; tap to change it</small>'));
+    const advBox = this.el('div', 'opt-ctl');
+    advRow.appendChild(advBox);
+    const drawAdvanced = () => {
+      advBox.innerHTML = '';
+      const many = ownedAdvanced(cfg.gear).length > 1;
+      const g = ADVANCED_GEAR.find(x => x.id === resolveAdvanced(cfg.gear));
+      const c = this.chip(g ? `${g.icon} ${g.short || g.name}` : 'EMPTY', '', !!g, 'narrow', () => {
+        if (!many) return;
+        cycleAdvancedSlot(cfg.gear);
+        drawAdvanced();
+      });
+      advBox.appendChild(c);
+    };
+    gearRows.push(drawAdvanced);
+    drawAdvanced();
+    s.appendChild(advRow);
 
     const bulk = this.el('div', 'chip-grid');
     bulk.appendChild(this.chip('MAX ALL GEAR', '', false, '', () => {
@@ -632,7 +805,7 @@ export class UI {
     }
     s.appendChild(this.btn(r.cleared && !r.abandoned ? 'REPLAY' : 'RETRY', r.cleared && !r.abandoned ? '' : 'primary',
       () => this.actions.startMission(r.mission.id)));
-    s.appendChild(this.btn('EQUIPMENT', '', () => this.showShop('missions')));
+    s.appendChild(this.btn('EQUIPMENT', '', () => this.showEquipment('missions')));
     s.appendChild(this.btn('MISSION SELECT', '', () => this.showMissions()));
     s.appendChild(this.btn('MAIN MENU', '', () => this.showTitle()));
     if (r.abandoned) {

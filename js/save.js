@@ -5,6 +5,7 @@ const DEFAULT = {
   missionsCleared: 0,      // next mission index to play
   gear: {},                // id -> level
   loadout: [],             // preferred gadget order: [tap slot, swipe-right slot]
+  advancedSlot: null,      // equipped advanced-gear id (e.g. 'drones'), or null
   totalCaptured: 0,
   bestPay: {},             // missionId -> best payout
   muted: false,
@@ -39,6 +40,7 @@ function normalize() {
   };
   if (!save.gear || typeof save.gear !== 'object') save.gear = {};
   save.loadout = Array.isArray(save.loadout) ? save.loadout.filter(id => typeof id === 'string').slice(0, 2) : [];
+  save.advancedSlot = typeof save.advancedSlot === 'string' ? save.advancedSlot : null;
   migrateGear(save.gear);
   migrateGear(save.sandbox.gear);
 }
