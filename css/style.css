@@ -507,10 +507,10 @@ html, body {
 .card .card-title { font-size: 9px; line-height: 1.3; }
 .card .card-pay { color: var(--cash); font-size: 9px; white-space: nowrap; }
 .card .card-desc { font-size: 7px; color: #93a2c2; margin-top: 8px; line-height: 1.8; }
-.card .card-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
-.card .card-row .menu-btn { margin: 0; width: auto; flex: 1; padding: 11px 8px; font-size: 9px; }
-.card .stars { color: var(--cash); font-size: 8px; letter-spacing: 2px; font-family: "Courier New", monospace; }
-.card .done { color: var(--ok); font-size: 7px; line-height: 1.5; }
+.card .card-row, .carousel-item .card-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+.card .card-row .menu-btn, .carousel-item .card-row .menu-btn { margin: 0; width: auto; flex: 1; padding: 11px 8px; font-size: 9px; }
+.card .stars, .carousel-item .stars { color: var(--cash); font-size: 8px; letter-spacing: 2px; font-family: "Courier New", monospace; }
+.card .done, .carousel-item .done { color: var(--ok); font-size: 7px; line-height: 1.5; }
 
 .result-line { display: flex; justify-content: space-between; align-items: center; width: min(300px, 88vw); padding: 6px 0; font-size: 8px; line-height: 1.4; }
 .result-line b { font-weight: 400; }
@@ -788,8 +788,8 @@ html, body {
   color: #a9b8d6; background: #161c2b; border: none;
   box-shadow: 0 0 0 2px var(--edge);
 }
-.card .slot-row { margin-top: 8px; gap: 6px; }
-.card .slot-row .chip { padding: 7px 4px; font-size: 7px; }
+.card .slot-row, .carousel-item .slot-row { margin-top: 8px; gap: 6px; }
+.card .slot-row .chip, .carousel-item .slot-row .chip { padding: 7px 4px; font-size: 7px; }
 .slot-row-label { font-size: 6.5px; color: #8494b8; }
 .slot-row-note { font-size: 6px; color: #8494b8; white-space: nowrap; }
 .tools { display: flex; flex-direction: column; gap: 5px; }
@@ -942,6 +942,109 @@ html, body {
 }
 
 .card-list .section-label.wide { width: auto; margin-top: 8px; }
+
+/* ---------- Equipment / Skills screen ---------- */
+
+/* GEAR / SKILLS segmented control */
+.view-tabs {
+  width: min(360px, 94vw);
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.view-tab {
+  flex: 1;
+  padding: 10px 7px;
+  background: #161c2b;
+  color: #a9b8d6;
+  font-family: inherit;
+  font-size: 8.5px;
+  letter-spacing: 1px;
+  text-align: center;
+  border: none;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+.view-tab.on {
+  background: #1c3a2a;
+  color: var(--ok);
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-lo), inset -2px -2px 0 0 var(--bevel-hi);
+}
+
+/* GEAR tab: smooth horizontal scrolling wheel of weapons/tools */
+.carousel-wrap {
+  position: relative;
+  width: min(360px, 94vw);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.carousel {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  gap: 14px;
+  padding: 4px 2px 14px;
+  min-width: 0;
+}
+.carousel-item {
+  scroll-snap-align: center;
+  flex: 0 0 min(220px, 76vw);
+  background: var(--panel);
+  padding: 14px 12px 12px;
+  text-align: center;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+.gear-ico { font-size: 34px; line-height: 1.2; font-family: sans-serif; }
+.gear-ico.small { font-size: 16px; }
+.carousel-item.locked .gear-ico,
+.gear-ico.locked { filter: brightness(0); }
+.gear-name { font-size: 8px; letter-spacing: 1px; margin: 6px 0 4px; }
+.carousel-item .stars { display: block; margin-bottom: 4px; }
+.carousel-nav {
+  flex: none;
+  width: 26px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  background: #161c2b;
+  border: none;
+  color: var(--ink);
+  box-shadow: 0 0 0 2px var(--edge), inset 1px 1px 0 0 var(--bevel-hi);
+}
+.carousel-nav:active { background: #2f4a6e; }
+
+/* SKILLS tab: character left, upgradeable stats right */
+.skills-view {
+  width: min(680px, 96vw);
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.skills-mug-pane { flex: 0 0 38%; max-width: 220px; }
+.skills-stats-pane { flex: 1; min-width: 0; }
+.skill-card .stat { margin: 8px 0 4px; }
+@media (max-width: 600px) and (orientation: portrait) {
+  .skills-view { flex-direction: column; align-items: center; }
+  .skills-mug-pane { flex: 0 0 auto; max-width: 160px; }
+}
+
+/* upgrade flash on the character when a skill levels up */
+@keyframes levelUpFlash {
+  0%   { filter: brightness(1); transform: scale(1); }
+  30%  { filter: brightness(2.2); transform: scale(1.08); }
+  60%  { filter: brightness(1.4); transform: scale(0.98); }
+  100% { filter: brightness(1); transform: scale(1); }
+}
+.mug.leveling-up .mug-sprite { animation: levelUpFlash 0.6s steps(6) 1; }
 
 /* portrait phones: the side-by-side split leaves the report squeezed into a
    sliver, so stack the personnel file above the report instead. */

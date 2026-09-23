@@ -220,7 +220,7 @@ export const GEAR = [
     ],
   },
   {
-    id: 'drones', name: 'Field Drones', icon: '\u{1F4E1}', perk: true,
+    id: 'drones', name: 'Field Drones', icon: '\u{1F4E1}', advanced: true,
     desc: 'A pair of recon drones rides with you and marks loose aliens off-screen with an arrow. Hidden aliens stay hidden.',
     levels: [
       { price: 600, label: 'Arrows to loose aliens off-screen' },
@@ -233,6 +233,14 @@ export const GEAR = [
 // along on a mission (see loadout.js); the rest stay in the locker.
 export const GADGET_SLOTS = 2;
 export const GADGETS = GEAR.filter(g => g.gadget);
+
+// Advanced gear (e.g. Field Drones) is passive kit with its own single slot,
+// separate from the shared gadget slots (see advancedGear.js).
+export const ADVANCED_SLOTS = 1;
+export const ADVANCED_GEAR = GEAR.filter(g => g.advanced);
+
+// Everything else: plain stat-boosting gear shown on the Skills screen.
+export const STAT_GEAR = GEAR.filter(g => !g.gadget && !g.advanced);
 
 // Noise Maker tuning per level (index = level). Radii are world px.
 export const NOISE_MAKER = [

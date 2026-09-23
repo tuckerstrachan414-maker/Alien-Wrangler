@@ -6,10 +6,11 @@
 //                                   (sprite + count) that opens an intel popup
 //   buildDossier(assets, fx, gear, onLoadout) -> personnel file DOM
 //   typewrite(paper, opts)       -> blanks the paper's text and types it back in
-import { GEAR } from './data/missions.js';
+import { GEAR, STAT_GEAR } from './data/missions.js';
 import { save } from './save.js';
 import { sfx } from './audio.js';
 import { resolveLoadout, ownedGadgets, cycleSlot, swapSlots, slotControl } from './loadout.js';
+import { resolveAdvanced } from './advancedGear.js';
 
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
@@ -190,11 +191,19 @@ function drawSeal(cv) {
 /* ---------------- personnel file ---------------- */
 
 // Each stat bar maps the gear level onto 10 segments: base kit sits at 4.
-function statRow(label, value, lv, max) {
+export function statRow(label, value, lv, max) {
   const segs = 4 + Math.round(6 * (max ? lv / max : 0));
   let bar = '';
   for (let i = 0; i < 10; i++) bar += `<i class="${i < segs ? 'on' : ''}"></i>`;
   return `<div class="stat"><div class="stat-top"><span>${label}</span><b>${value}</b></div><div class="stat-bar">${bar}</div></div>`;
+}
+
+// Draw the agent's mugshot sprite crisp onto a canvas, scaled up SCx.
+export function renderMugshot(cv, spr, sc = 5) {
+  cv.width = spr.width * sc; cv.height = spr.height * sc;
+  const x = cv.getContext('2d');
+  x.imageSmoothingEnabled = false;
+  x.drawImage(spr, 0, 0, spr.width * sc, spr.height * sc);
 }
 
 export function buildDossier(assets, fx, gear, onLoadout) {
@@ -223,12 +232,13 @@ export function buildDossier(assets, fx, gear, onLoadout) {
   const tools = [];
   tools.push(`<div class="tool on"><span class="tool-ico">\u{270B}</span><span>GRAB &amp; DIVE<small>STANDARD ISSUE</small></span></div>`);
   for (const g of GEAR) {
-    if (['shoes', 'stamina', 'gloves', 'kneepads', 'vest'].includes(g.id)) continue;   // shown as stats
+    if (STAT_GEAR.some(s => s.id === g.id)) continue;                                     // shown as stats
     if (g.gadget && lo.includes(g.id)) continue;                                          // shown as a slot
+    if (g.advanced && resolveAdvanced(gear) === g.id) continue;                           // shown as a slot
     const l = lv(g.id);
-    const tag = g.gadget && l ? 'IN LOCKER' : l ? mk(g, l) : 'NOT ISSUED';
+    const tag = (g.gadget || g.advanced) && l ? 'IN LOCKER' : l ? mk(g, l) : 'NOT ISSUED';
     tools.push(`<div class="tool ${l ? 'on' : 'off'}"><span class="tool-ico">${g.icon}</span>` +
-      `<span>${g.name.toUpperCase()}${g.perk ? ' <em>PERK</em>' : ''}<small>${tag}</small></span></div>`);
+      `<span>${g.name.toUpperCase()}${g.advanced ? ' <em>ADV</em>' : ''}<small>${tag}</small></span></div>`);
   }
 
   d.innerHTML =
@@ -261,13 +271,7 @@ export function buildDossier(assets, fx, gear, onLoadout) {
   if (sw) sw.addEventListener('click', () => { swapSlots(gear); changed(); });
 
   // the agent's mugshot, scaled up crisp
-  const cv = d.querySelector('.mug-sprite');
-  const spr = assets.actors.player.down;
-  const SC = 5;
-  cv.width = spr.width * SC; cv.height = spr.height * SC;
-  const x = cv.getContext('2d');
-  x.imageSmoothingEnabled = false;
-  x.drawImage(spr, 0, 0, spr.width * SC, spr.height * SC);
+  renderMugshot(d.querySelector('.mug-sprite'), assets.actors.player.down);
   return d;
 }
 
