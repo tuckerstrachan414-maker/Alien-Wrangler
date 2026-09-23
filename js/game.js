@@ -1,7 +1,7 @@
 import { TILE } from './data/sprites.js';
 import { MAP_BUILDERS } from './data/maps.js';
 import { gearEffects, ALIEN_STATS, abandonFee, NOISE_MAKER } from './data/missions.js';
-import { buildNav, collide, overlapsJumpable } from './nav.js';
+import { buildNav, collide } from './nav.js';
 import { Player, Alien } from './entities.js';
 import { input, consumePress, setButtonCooling, getControlMode } from './input.js';
 import { sfx } from './audio.js';
@@ -14,6 +14,11 @@ const DEPOSIT_R = 30;
 // bent onto an alien inside this reach and cone of that direction.
 const DIVE_REACH = 104;
 const DIVE_CONE = Math.cos(30 * Math.PI / 180);
+
+// Net Gun aim assist: a fired net bends onto an alien inside this reach and
+// cone of your aim, so a near-miss still connects.
+const NET_AIM_REACH = 130;
+const NET_AIM_CONE = Math.cos(22 * Math.PI / 180);
 
 // Field Drones Mk.II paints each tier its own arrow colour.
 const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
@@ -56,6 +61,7 @@ export class Game {
     this.escaped = 0;
     this.totalAliens = this.aliens.length;
     this.earned = 0;
+    this.forceFail = false;
 
     this.projectiles = [];
     this.particles = [];
@@ -215,9 +221,21 @@ export class Game {
     if (!this.fx.netgun || p.netCd > 0 || !p.canAct) return;
     p.netCd = this.fx.netgun >= 2 ? 4.5 : 6;
     sfx.net();
+    // Slight aim assist: bend the shot onto a nearby alien roughly ahead of
+    // you rather than firing dead straight along your facing.
+    let dir = { x: p.dir.x, y: p.dir.y };
+    let bestD = 1e9;
+    for (const a of this.aliens) {
+      if (!a.grabbable || a.z >= 16) continue;
+      const ax = a.x - p.x, ay = a.y - p.y;
+      const d = Math.hypot(ax, ay);
+      if (d > NET_AIM_REACH || d < 0.001) continue;
+      if ((ax * p.dir.x + ay * p.dir.y) / d < NET_AIM_CONE) continue;
+      if (d < bestD) { bestD = d; dir = { x: ax / d, y: ay / d }; }
+    }
     this.projectiles.push({
-      type: 'net', x: p.x + p.dir.x * 8, y: p.y - 4 + p.dir.y * 8,
-      vx: p.dir.x * 210, vy: p.dir.y * 210, life: 0.65,
+      type: 'net', x: p.x + dir.x * 8, y: p.y - 4 + dir.y * 8,
+      vx: dir.x * 210, vy: dir.y * 210, life: 0.65,
     });
   }
 
@@ -243,7 +261,10 @@ export class Game {
     }
     this.popup(p.x, p.y - 26, 'BANG!', '#fff6c8');
 
-    let stunned = 0, pinged = 0;
+    // Only aliens actually caught hiding get stunned by the blast — a loose
+    // one already running or attacking just gets its cloak blown and is
+    // revealed, not knocked down.
+    let stunned = 0, pinged = 0, revealed = 0;
     for (const a of this.aliens) {
       const d = Math.hypot(a.x - p.x, a.y - p.y);
       if (d <= nm.stunR) {
@@ -254,7 +275,8 @@ export class Game {
           if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
         }
         if (!a.free) continue;
-        if (a.state === 'hiding') {
+        const wasHiding = a.state === 'hiding';
+        if (wasHiding) {
           // blown out of cover: pop it a step toward the agent so the
           // foliage/container isn't still hiding it
           a.flush(this);
@@ -265,16 +287,22 @@ export class Game {
         }
         a.revealT = nm.pingT;
         a.cloaked = false;
-        if (a.state === 'netted') a.stateT = Math.max(a.stateT, nm.stunT);
-        else a.stunned(nm.stunT);
-        this.popup(a.x, a.y - 16, 'STUNNED!', '#fff6c8');
-        stunned++;
+        if (a.state === 'netted') {
+          a.stateT = Math.max(a.stateT, nm.stunT);
+        } else if (wasHiding) {
+          a.stunned(nm.stunT);
+          this.popup(a.x, a.y - 16, 'STUNNED!', '#fff6c8');
+          stunned++;
+        } else {
+          this.popup(a.x, a.y - 16, 'REVEALED!', '#41f0d8');
+          revealed++;
+        }
       } else if (d <= nm.pingR && a.free) {
         a.revealT = nm.pingT;
         if (a.state === 'hiding') pinged++;
       }
     }
-    if (stunned + pinged === 0) this.popup(p.x, p.y - 34, 'NOTHING NEARBY', '#8fa0c4');
+    if (stunned + pinged + revealed === 0) this.popup(p.x, p.y - 34, 'NOTHING NEARBY', '#8fa0c4');
 
     // On Maple Street a bang is the loudest thing you can possibly do.
     if (this.stealth) this.noisePulse(p.x, p.y, 70);
@@ -355,13 +383,6 @@ export class Game {
     if (consumePress('gadget2')) this.useGadget(1);
 
     const gestures = getControlMode() === 'gestures';
-    // No-buttons auto-vault: walk into a fence / hay bale / crate and you hop it.
-    if (gestures && p.state === 'normal' && p.moving && p.z === 0) {
-      const reach = p.r + 3;
-      if (overlapsJumpable(this.map, p.x + p.dir.x * reach, p.y + p.dir.y * reach, 2)) {
-        if (p.tryJump()) sfx.jump();
-      }
-    }
     if (gestures) this.autoGrab();
 
     const wasDiving = p.state === 'diving';
@@ -394,7 +415,8 @@ export class Game {
       if (pr.type === 'bolt') {
         if (p.state !== 'stunned' && !p.airborne && p.state !== 'prone' &&
             Math.hypot(p.x - pr.x, p.y - 4 - pr.y) < 7) {
-          this.playerHit(null, 1.15, pr.vx * 0.4, pr.vy * 0.4);
+          // a solid punt back along the bolt's flight, not just a stagger
+          this.playerHit(null, 1.15, pr.vx * 0.9, pr.vy * 0.9);
           pr.life = 0;
         }
       } else if (pr.type === 'net') {
@@ -403,6 +425,7 @@ export class Game {
           if (Math.hypot(a.x - pr.x, a.y - 4 - pr.y) < 9) {
             a.state = 'netted';
             a.stateT = this.fx.netgun >= 2 ? 4 : 3;
+            a.vx = 0; a.vy = 0;
             a.cloaked = false;
             this.popup(a.x, a.y - 16, 'PINNED!', '#ffd75e');
             this.puff(a.x, a.y, '#ffd75e');
@@ -587,16 +610,16 @@ export class Game {
     if (this.suspicion >= 100) this.noiseComplaint();
   }
 
+  // The block waking up doesn't cost a fine any more — it blows the whole
+  // job. Everyone scatters and the mission ends right there as a loss.
   noiseComplaint() {
-    this.suspicion = 45;
-    this.fines++;
     this.shake = 6;
     sfx.alert();
-    this.announce(this.mission.escapeCost
-      ? `NEIGHBORS WOKE UP!  -$${this.mission.escapeCost}`
-      : 'NEIGHBORS WOKE UP!', 2.4);
+    this.announce('NEIGHBORS CALLED THE COPS!', 2.4);
     for (const h of this.homes) h.alertT = 1.8;
     for (const a of this.aliens) a.flush(this);   // everyone scatters
+    this.forceFail = true;
+    this.finish();
   }
 
   updateVolcano(dt) {
@@ -639,7 +662,7 @@ export class Game {
     const m = this.mission;
     const deduction = (this.escaped + this.fines) * m.escapeCost;
     const pay = this.projectedPay();
-    const cleared = this.captured > 0;
+    const cleared = this.captured > 0 && !this.forceFail;
     if (cleared) sfx.win(); else sfx.fail();
     const results = {
       mission: m, captured: this.captured, escaped: this.escaped,

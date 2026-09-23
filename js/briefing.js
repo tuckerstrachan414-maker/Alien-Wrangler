@@ -78,7 +78,7 @@ export function buildReport(m, assets) {
     ['PAY', `$${m.pay}`],
     ['PER ESCAPE', `-$${m.escapeCost}`],
   ];
-  if (m.map === 'neighborhood') facts.push(['PER COMPLAINT', `-$${m.escapeCost}`]);
+  if (m.map === 'neighborhood') facts.push(['NOISE METER FULL', 'JOB BLOWN']);
   html.push(`<div class="doc-facts tw-block">${facts.map(([k, v]) =>
     `<div><i>${k}</i><b>${v}</b></div>`).join('')}</div>`);
 
