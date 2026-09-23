@@ -176,7 +176,9 @@ export class Player {
       moveIn.edgeSpent = true;
       updateSprintVisual();
     }
-    const top = (sprinting ? this.sprintSpeed : this.baseSpeed) * this.carryPenalty * (this.moving ? mag : 0);
+    // Two speeds only, walk or sprint — how far the stick/thumb is pushed
+    // doesn't creep the speed up or down, it only picks a direction.
+    const top = (sprinting ? this.sprintSpeed : this.baseSpeed) * this.carryPenalty * (this.moving ? 1 : 0);
     const ax = 900;
     const tx = this.moving ? mx / Math.max(0.001, Math.hypot(mx, my)) * top : 0;
     const ty = this.moving ? my / Math.max(0.001, Math.hypot(mx, my)) * top : 0;

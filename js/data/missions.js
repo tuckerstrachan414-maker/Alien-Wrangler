@@ -17,7 +17,7 @@ export const MISSIONS = [
   {
     id: 2, map: 'neighborhood', name: 'Suburban Stakeout',
     desc: 'Aliens on Maple Street at 3am. Keep it quiet — sprinting near a house wakes the block. Watch the NOISE meter.',
-    brief: 'Three Grunts landed on Maple Street while the whole block sleeps. Sprinting fills the NOISE meter, 3x faster outside a house, and dashes or missed dives spike it. Fill it and the block wakes up: every hidden alien bolts and you are fined.',
+    brief: 'Three Grunts landed on Maple Street while the whole block sleeps. Sprinting fills the NOISE meter, 3x faster outside a house, and dashes or missed dives spike it. Fill it and the block wakes up: the cops get called and the job is blown.',
     aliens: { grunt: 3 }, time: 170, pay: 260, escapeCost: 45,
   },
   {
@@ -35,7 +35,7 @@ export const MISSIONS = [
   {
     id: 5, map: 'neighborhood', name: 'Quiet Hours',
     desc: 'More of them, and a Trooper — but the neighbours are lighter sleepers. Sneak, do not sprint.',
-    brief: 'Back on Maple Street, now with Scouts and an armored Trooper. Sprinting, dashes and missed dives fill the NOISE meter, and a full meter wakes the block, scatters every alien and costs a fine. Walk near the houses and save the loud moves for the road.',
+    brief: 'Back on Maple Street, now with Scouts and an armored Trooper. Sprinting, dashes and missed dives fill the NOISE meter, and a full meter wakes the block and blows the job. Walk near the houses and save the loud moves for the road.',
     aliens: { grunt: 2, scout: 2, trooper: 1 }, time: 155, pay: 460, escapeCost: 60,
   },
   {
@@ -197,7 +197,7 @@ export const GEAR = [
   },
   {
     id: 'noisemaker', name: 'Noise Maker', icon: '\u{1F4A5}', gadget: true, short: 'NOISE',
-    desc: 'Set off a deafening BANG: aliens close by are stunned and knocked out of hiding (and out of cloak); hidden ones further out get pinged.',
+    desc: 'Set off a deafening BANG: hidden aliens close by are knocked out of cover and stunned; loose ones close by just lose their cloak; hidden ones further out get pinged.',
     levels: [
       { price: 450, label: 'Stun 2s in 72px, ping 140px, 14s reload' },
       { price: 1200, label: 'Mk.II \u2014 stun 2.8s in 100px, ping 220px, 10s reload' },

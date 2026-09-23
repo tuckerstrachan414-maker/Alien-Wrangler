@@ -4,13 +4,13 @@
 //   'gestures' — no buttons. The screen is split down the middle:
 //                LEFT  (legs)  : drag to walk; push the thumb out past the
 //                                sprint ring (a little beyond full speed) to
-//                                sprint. Low fences / bales / crates are
-//                                vaulted and aliens you touch are grabbed
+//                                sprint. Aliens you touch are grabbed
 //                                automatically.
-//                RIGHT (hands) : TAP = gadget slot 1, SWIPE RIGHT = gadget
-//                                slot 2, SWIPE UP = jump, SWIPE DOWN = dive,
-//                                SWIPE LEFT = dash. Dive and dash both go the
-//                                way you are running, not the way you swiped.
+//                RIGHT (hands) : DOUBLE TAP = gadget slot 1, SWIPE RIGHT =
+//                                gadget slot 2, SWIPE UP = jump, SWIPE DOWN =
+//                                dive, SWIPE LEFT = dash. Dive and dash both
+//                                go the way you are running, not the way you
+//                                swiped.
 //
 //   Nothing the right thumb does ever interrupts walking, and the left thumb
 //   has no taps or flicks at all, so steering can never misfire an action.
@@ -35,17 +35,19 @@ const TAP_SLOP = 18;       // max travel (px) during a tap
 const FLICK_WINDOW = 250;  // ms of pointer history a swipe is measured over
 const FLICK_SPEED = 200;   // px/s minimum
 const EDGE_HYST = 10;      // px the thumb must fall back inside the ring to stop sprinting
+const DOUBLE_TAP_MS = 320; // max gap between the two taps of a double-tap
+const DOUBLE_TAP_SLOP = 40; // max travel (px) between the two taps
 
 // Flick distance and the sprint ring scale a little with the screen's short
 // side so they feel the same on a phone in landscape as in portrait. The ring
 // sits well outside full walking speed (JOY_RADIUS), so you only sprint when
 // you mean to.
 let flickDist = 40;
-let sprintR = 66;
+let sprintR = 76;
 function measure() {
   const shortSide = Math.min(window.innerWidth, window.innerHeight);
   flickDist = Math.max(30, Math.min(62, Math.round(shortSide * 0.085)));
-  sprintR = Math.max(58, Math.min(84, Math.round(shortSide * 0.17)));
+  sprintR = Math.max(66, Math.min(96, Math.round(shortSide * 0.195)));
   document.documentElement.style.setProperty('--sprint-r', `${sprintR}px`);
 }
 measure();
@@ -115,7 +117,7 @@ function applyHintVisibility() {
   // TAP falls back to a plain grab when slot 1 is empty; SWIPE RIGHT does
   // nothing without a second gadget, so its hint goes dark.
   const g1 = document.getElementById('hint-g1');
-  if (g1) g1.innerHTML = `TAP<b>${gadgetSlots[0] ? gadgetSlots[0].short : 'GRAB'}</b>`;
+  if (g1) g1.innerHTML = `2xTAP<b>${gadgetSlots[0] ? gadgetSlots[0].short : 'GRAB'}</b>`;
   const g2 = document.getElementById('hint-g2');
   if (g2) {
     g2.innerHTML = `<i class="arr rt"></i><b>${gadgetSlots[1] ? gadgetSlots[1].short : '-'}</b>`;
@@ -128,9 +130,11 @@ export function refreshHints() { applyHintVisibility(); }
 /* ---------------- shared gesture bookkeeping ---------------- */
 
 const tracked = new Map();   // pointerId -> gesture state
+let lastTapT = -1e9, lastTapX = 0, lastTapY = 0;   // pending first tap of a double-tap
 
 function resetPointers() {
   tracked.clear();
+  lastTapT = -1e9;
 }
 
 function track(e) {
@@ -321,9 +325,21 @@ export function setupInput() {
     if (!p) return;
     tracked.delete(e.pointerId);
     if (controlMode !== 'gestures' || e.type !== 'pointerup') return;
-    if (!isTap(p, e.timeStamp || performance.now())) return;
-    input.presses.gadget1 = true;
-    tapFx(e.clientX, e.clientY, 'tap');
+    const now = e.timeStamp || performance.now();
+    if (!isTap(p, now)) return;
+    // Two taps close together in time and place fire gadget1; a lone tap
+    // just arms the window and shows feedback so the thumb has something to
+    // react to while waiting for the second tap.
+    const sinceLast = now - lastTapT;
+    const dist = Math.hypot(e.clientX - lastTapX, e.clientY - lastTapY);
+    if (sinceLast <= DOUBLE_TAP_MS && dist <= DOUBLE_TAP_SLOP) {
+      lastTapT = -1e9;
+      input.presses.gadget1 = true;
+      tapFx(e.clientX, e.clientY, 'tap');
+    } else {
+      lastTapT = now; lastTapX = e.clientX; lastTapY = e.clientY;
+      tapFx(e.clientX, e.clientY, 'tap');
+    }
   };
   actZone.addEventListener('pointerup', actEnd);
   actZone.addEventListener('pointercancel', actEnd);

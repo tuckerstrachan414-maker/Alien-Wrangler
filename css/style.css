@@ -943,10 +943,13 @@ html, body {
 
 .card-list .section-label.wide { width: auto; margin-top: 8px; }
 
-/* very narrow phones: stack the file above the report */
-@media (max-width: 339px) and (orientation: portrait) {
-  .brief-body { flex-direction: column; }
-  .dossier-pane { flex: 0 0 auto; max-width: none; max-height: 36%; }
+/* portrait phones: the side-by-side split leaves the report squeezed into a
+   sliver, so stack the personnel file above the report instead. */
+@media (max-width: 600px) and (orientation: portrait) {
+  .screen.brief { gap: 7px; }
+  .brief-body { flex-direction: column; gap: 8px; }
+  .dossier-pane { flex: 0 0 auto; max-width: none; max-height: 34%; }
+  .report-pane { flex: 1; min-height: 0; }
 }
 
 /* ---------- Landscape layout ---------- */
