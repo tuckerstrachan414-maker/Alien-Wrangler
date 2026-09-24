@@ -1,12 +1,17 @@
 import { TILE } from './data/sprites.js';
 import { MAP_BUILDERS } from './data/maps.js';
-import { gearEffects, ALIEN_STATS, abandonFee, NOISE_MAKER } from './data/missions.js';
+import { gearEffects, ALIEN_STATS, abandonFee, WEAPONS, GADGETS } from './data/missions.js';
 import { buildNav, collide } from './nav.js';
 import { Player, Alien } from './entities.js';
 import { input, consumePress, setButtonCooling, getControlMode } from './input.js';
 import { sfx } from './audio.js';
 import { save } from './save.js';
 import { resolveLoadout } from './loadout.js';
+import {
+  REGISTRY, fireWeapon, weaponCooling, updateWeapons, updateProjectile, projectileWall,
+  renderGround, renderTop, drawCage, snoreCloud,
+} from './weapons.js';
+import { DecoyAgent } from './decoy.js';
 
 const DEPOSIT_R = 30;
 
@@ -14,11 +19,6 @@ const DEPOSIT_R = 30;
 // bent onto an alien inside this reach and cone of that direction.
 const DIVE_REACH = 104;
 const DIVE_CONE = Math.cos(30 * Math.PI / 180);
-
-// Net Gun aim assist: a fired net bends onto an alien inside this reach and
-// cone of your aim, so a near-miss still connects.
-const NET_AIM_REACH = 130;
-const NET_AIM_CONE = Math.cos(22 * Math.PI / 180);
 
 // Field Drones Mk.II paints each tier its own arrow colour.
 const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
@@ -72,6 +72,11 @@ export class Game {
     this.flash = 0;             // Noise Maker white-out (seconds left)
     this.fullNagT = -9;         // last auto-grab "HANDS FULL" popup
     this.shockwaves = [];       // Noise Maker blast rings
+    this.decoys = [];           // Decoy Agents out hunting
+    this.deployables = [];      // bait, cages, courier drones, evac beams
+    this.zaps = [];             // stun-gun arcs + hypno beams (drawn briefly)
+    this.hypnoSeq = 0;          // conga-line order for hypnotized aliens
+    this.evacNagT = -9;
     this.running = true;
     this.time = 0;
     // screen-space margins (buffer px) kept clear for edge arrows; main.js
@@ -152,6 +157,24 @@ export class Game {
   }
 
   playerHit(source, dur, kx, ky) {
+    const p = this.player;
+    if (p.shieldT > 0) {
+      // Riot Shield: the hit never lands; a tackler bounces off seeing stars
+      // (long enough to grab it)
+      sfx.block();
+      this.popup(p.x, p.y - 20, 'BLOCKED', '#7fe3ff');
+      if (source) {
+        source.stunned(2);
+        this.popup(source.x, source.y - 16, 'BOUNCED!', '#7fe3ff');
+      }
+      return;
+    }
+    // getting stunned snaps anyone following you out of their trance
+    for (const a of this.aliens) {
+      if (a.state !== 'hypno' || a.hypnoWalk) continue;
+      a.state = 'running'; a.chase = -2; a.repathT = 0;
+      this.popup(a.x, a.y - 16, 'TRANCE BROKEN', '#ff9e5e');
+    }
     const dropped = this.player.stun(dur, kx, ky);
     sfx.stun();
     this.shake = 5;
@@ -216,113 +239,148 @@ export class Game {
     if (!hit) this.puff(gp.x, gp.y, '#8fa0c4');
   }
 
-  fireNet() {
-    const p = this.player;
-    if (!this.fx.netgun || p.netCd > 0 || !p.canAct) return;
-    p.netCd = this.fx.netgun >= 2 ? 4.5 : 6;
-    sfx.net();
-    // Slight aim assist: bend the shot onto a nearby alien roughly ahead of
-    // you rather than firing dead straight along your facing.
-    let dir = { x: p.dir.x, y: p.dir.y };
-    let bestD = 1e9;
-    for (const a of this.aliens) {
-      if (!a.grabbable || a.z >= 16) continue;
-      const ax = a.x - p.x, ay = a.y - p.y;
-      const d = Math.hypot(ax, ay);
-      if (d > NET_AIM_REACH || d < 0.001) continue;
-      if ((ax * p.dir.x + ay * p.dir.y) / d < NET_AIM_CONE) continue;
-      if (d < bestD) { bestD = d; dir = { x: ax / d, y: ay / d }; }
-    }
-    this.projectiles.push({
-      type: 'net', x: p.x + dir.x * 8, y: p.y - 4 + dir.y * 8,
-      vx: dir.x * 210, vy: dir.y * 210, life: 0.65,
-    });
-  }
-
-  // Noise Maker: a deafening bang centred on the agent. Anything loose (or
-  // hiding) inside stunR is knocked out of cover / out of its cloak and
-  // stunned; hidden aliens out to pingR get a marker for a few seconds.
-  detonateNoise() {
-    const p = this.player;
-    const nm = NOISE_MAKER[this.fx.noisemaker];
-    if (!nm || p.noiseCd > 0 || p.state === 'stunned' || p.state === 'prone') return;
-    p.noiseCd = nm.cd;
-    sfx.bang();
-    this.shake = 8;
-    this.flash = 0.28;
-    this.shockwaves.push({ x: p.x, y: p.y, r: 4, max: nm.stunR, t: 0.45, life: 0.45, col: '#ffffff' });
-    this.shockwaves.push({ x: p.x, y: p.y, r: 4, max: nm.pingR, t: 0.8, life: 0.8, col: '#41f0d8' });
-    for (let i = 0; i < 16; i++) {
-      const a = Math.random() * Math.PI * 2, sp = 50 + Math.random() * 60;
-      this.particles.push({
-        x: p.x, y: p.y - 4, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.6 - 10,
-        life: 0.45, t: 0.45, color: Math.random() < 0.5 ? '#fff6c8' : '#ffd75e', size: 1,
-      });
-    }
-    this.popup(p.x, p.y - 26, 'BANG!', '#fff6c8');
-
-    // Only aliens actually caught hiding get stunned by the blast — a loose
-    // one already running or attacking just gets its cloak blown and is
-    // revealed, not knocked down.
-    let stunned = 0, pinged = 0, revealed = 0;
-    for (const a of this.aliens) {
-      const d = Math.hypot(a.x - p.x, a.y - p.y);
-      if (d <= nm.stunR) {
-        if (a.state === 'beaming' && a.riseZ < 26) {
-          // blasted out of the tractor beam — it drops back to the ground
-          a.riseZ = 0;
-          a.state = 'running';
-          if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
-        }
-        if (!a.free) continue;
-        const wasHiding = a.state === 'hiding';
-        if (wasHiding) {
-          // blown out of cover: pop it a step toward the agent so the
-          // foliage/container isn't still hiding it
-          a.flush(this);
-          const len = d || 1;
-          const pos = collide(this.map, a.x + (p.x - a.x) / len * 12, a.y + (p.y - a.y) / len * 12, a.r, false);
-          a.x = pos.x; a.y = pos.y;
-          a.zv = 100; a.z = 0.1;
-        }
-        a.revealT = nm.pingT;
-        a.cloaked = false;
-        if (a.state === 'netted') {
-          a.stateT = Math.max(a.stateT, nm.stunT);
-        } else if (wasHiding) {
-          a.stunned(nm.stunT);
-          this.popup(a.x, a.y - 16, 'STUNNED!', '#fff6c8');
-          stunned++;
-        } else {
-          this.popup(a.x, a.y - 16, 'REVEALED!', '#41f0d8');
-          revealed++;
-        }
-      } else if (d <= nm.pingR && a.free) {
-        a.revealT = nm.pingT;
-        if (a.state === 'hiding') pinged++;
-      }
-    }
-    if (stunned + pinged + revealed === 0) this.popup(p.x, p.y - 34, 'NOTHING NEARBY', '#8fa0c4');
-
-    // On Maple Street a bang is the loudest thing you can possibly do.
-    if (this.stealth) this.noisePulse(p.x, p.y, 70);
-  }
-
   // Fire the gadget in loadout slot 0 / 1. An empty slot 1 falls back to a
   // plain grab so a no-buttons tap is never dead.
   useGadget(slot) {
     const id = this.loadout[slot];
-    if (id === 'noisemaker') this.detonateNoise();
-    else if (id === 'netgun') this.fireNet();
+    if (id) fireWeapon(this, this.player, id, this.fx.lv[id]);
     else if (slot === 0) this.grabAttempt();
   }
 
   gadgetCooling(slot) {
-    const p = this.player;
     const id = this.loadout[slot];
-    if (id === 'noisemaker') return p.noiseCd > 0;
-    if (id === 'netgun') return p.netCd > 0;
-    return false;
+    return !!id && weaponCooling(this, this.player, id, this.fx.lv[id]);
+  }
+
+  /* ---------------- weapon hooks ---------------- */
+
+  // Who an alien is running from / going for: the agent, or a Decoy Agent
+  // that's nearer and close enough to have its attention.
+  threatFor(a) {
+    const p = this.player;
+    let best = p, bd = Math.hypot(p.x - a.x, p.y - a.y);
+    for (const d of this.decoys) {
+      if (d.dead) continue;
+      const dd = Math.hypot(d.x - a.x, d.y - a.y);
+      if (dd < d.reach && dd < bd) { best = d; bd = dd; }
+    }
+    return best;
+  }
+
+  // Is alien `a` pinned between the agent and a decoy on its far side?
+  cornered(a) {
+    const p = this.player;
+    const px = p.x - a.x, py = p.y - a.y, pl = Math.hypot(px, py) || 1;
+    for (const d of this.decoys) {
+      if (d.dead) continue;
+      const dx = d.x - a.x, dy = d.y - a.y, dl = Math.hypot(dx, dy);
+      if (dl > 72) continue;
+      if ((px * dx + py * dy) / (pl * (dl || 1)) < -0.25) return d;
+    }
+    return null;
+  }
+
+  spawnDecoys(lv) {
+    const T = WEAPONS.decoy[lv];
+    for (const d of this.decoys) this.popDecoy(d, false);
+    this.decoys = [];
+    // Mk.I brings the other gadget in your loadout; Mk.II+ everything you own
+    const ids = T.allOwned
+      ? GADGETS.map(g => g.id).filter(id => this.fx.lv[id] > 0)
+      : this.loadout.slice();
+    const usable = ids.filter(id => REGISTRY[id] && REGISTRY[id].decoyWants);
+    const p = this.player;
+    // side by side, across your facing
+    const sx = -p.dir.y, sy = p.dir.x;
+    for (let i = 0; i < T.count; i++) {
+      const off = T.count > 1 ? (i ? 14 : -14) : 0;
+      const pos = collide(this.map, p.x + p.dir.x * 10 + sx * off, p.y + p.dir.y * 10 + sy * off, 5, false);
+      const d = new DecoyAgent(pos.x, pos.y, T, usable, this.fx.lv);
+      d.dir = { x: p.dir.x, y: p.dir.y };
+      this.decoys.push(d);
+      this.puff(pos.x, pos.y, '#ffb07a');
+    }
+    this.popup(p.x, p.y - 24, T.count > 1 ? 'DECOY SQUAD!' : 'DECOY OUT!', '#ffb07a');
+  }
+
+  hitDecoy(d, src) {
+    if (d.dead) return;
+    if (d.shieldT > 0) {
+      sfx.block();
+      if (src) { src.stunned(1.2); this.popup(src.x, src.y - 16, 'BOUNCED!', '#7fe3ff'); }
+      return;
+    }
+    d.hp--;
+    sfx.thud();
+    this.puff(d.x, d.y - 4, '#ffb07a');
+    if (d.hp <= 0) this.popDecoy(d, true);
+    else this.popup(d.x, d.y - 20, `${d.hp} HP`, '#ffb07a');
+  }
+
+  popDecoy(d, loudly) {
+    if (d.popped) return;
+    d.popped = true;
+    d.dead = true;
+    sfx.pop();
+    for (let i = 0; i < 10; i++) {
+      const a = Math.random() * Math.PI * 2;
+      this.particles.push({
+        x: d.x, y: d.y - 8, vx: Math.cos(a) * 50, vy: Math.sin(a) * 30 - 10,
+        life: 0.5, t: 0.5, color: i % 2 ? '#ffb07a' : '#2a2f45', size: 1,
+      });
+    }
+    if (loudly) this.popup(d.x, d.y - 20, 'POP!', '#ffb07a');
+  }
+
+  // Grapple Hook: a reeled-in alien reached the agent — straight into your hands.
+  onReelArrive(a) {
+    const p = this.player;
+    a.reelTo = null;
+    a.stunned(0.6);
+    if (Math.hypot(a.x - p.x, a.y - p.y) > 40) { a.stateT = 1.1; return; }
+    if (!this.tryCapture(a)) a.stateT = 1.2;
+  }
+
+  snoreCloud(a, r, dur) { snoreCloud(this, a, r, dur); }
+
+  // A stun bolt hit a Riot Shield: Mk.I soaks it, Mk.II+ sends it back.
+  shieldBolt(user, pr) {
+    sfx.block();
+    if (WEAPONS.shield[user.shieldLv] && WEAPONS.shield[user.shieldLv].reflect) {
+      pr.type = 'rbolt';
+      pr.vx *= -1.15; pr.vy *= -1.15;
+      pr.life = 1.2;
+      pr.x += pr.vx * 0.03; pr.y += pr.vy * 0.03;
+      this.popup(user.x, user.y - 20, 'REFLECT!', '#7fe3ff');
+    } else {
+      pr.life = 0;
+      this.popup(user.x, user.y - 20, 'BLOCKED', '#7fe3ff');
+    }
+  }
+
+  crumbs(a) {
+    this.particles.push({
+      x: a.x + (Math.random() - 0.5) * 6, y: a.y - 6,
+      vx: (Math.random() - 0.5) * 20, vy: -10 - Math.random() * 10,
+      life: 0.4, t: 0.4, color: Math.random() < 0.5 ? '#d98b3a' : '#6b3a22', size: 1,
+    });
+  }
+
+  // Count an alien as locked in the van (the van door, Evac, a courier drone,
+  // a hypnotized alien walking in on its own).
+  secureAlien(a) {
+    if (a.state === 'deposited') return;
+    a.state = 'deposited';
+    a.cage = null;
+    a.bait = null;
+    this.captured++;
+    if (!this.mission.sandbox) save.totalCaptured++;
+    if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+  }
+
+  // Aliens the UFO may take: loose, and not already under the agent's control.
+  ufoCanTake(a) {
+    return a.free && !a.controlled;
   }
 
   // Dive the way you're running. In no-buttons mode it bends onto an alien
@@ -405,6 +463,14 @@ export class Game {
       }
     }
 
+    // weapons: bait, cages, courier drones, hypno line, shield bash
+    updateWeapons(this, dt);
+
+    // decoy agents
+    for (const d of this.decoys) d.update(dt, this);
+    for (const d of this.decoys) if (d.dead) this.popDecoy(d, d.hp <= 0);
+    this.decoys = this.decoys.filter(d => !d.dead);
+
     // aliens
     for (const a of this.aliens) a.update(dt, this);
 
@@ -415,16 +481,24 @@ export class Game {
       if (pr.type === 'bolt') {
         if (p.state !== 'stunned' && !p.airborne && p.state !== 'prone' &&
             Math.hypot(p.x - pr.x, p.y - 4 - pr.y) < 7) {
+          if (p.shieldT > 0) this.shieldBolt(p, pr);
           // a solid punt back along the bolt's flight, not just a stagger
-          this.playerHit(null, 1.15, pr.vx * 0.9, pr.vy * 0.9);
-          pr.life = 0;
+          else { this.playerHit(null, 1.15, pr.vx * 0.9, pr.vy * 0.9); pr.life = 0; }
+        } else {
+          for (const d of this.decoys) {
+            if (Math.hypot(d.x - pr.x, d.y - 4 - pr.y) >= 7) continue;
+            if (d.shieldT > 0) this.shieldBolt(d, pr);
+            else { this.hitDecoy(d, null); pr.life = 0; }
+            break;
+          }
         }
       } else if (pr.type === 'net') {
         for (const a of this.aliens) {
-          if (!a.free || a.state === 'netted') continue;
+          if (!a.free || a.controlled || a.state === 'netted') continue;
           if (Math.hypot(a.x - pr.x, a.y - 4 - pr.y) < 9) {
             a.state = 'netted';
-            a.stateT = this.fx.netgun >= 2 ? 4 : 3;
+            a.stateT = pr.pin || 3;
+            a.bait = null;
             a.vx = 0; a.vy = 0;
             a.cloaked = false;
             this.popup(a.x, a.y - 16, 'PINNED!', '#ffd75e');
@@ -433,24 +507,32 @@ export class Game {
             break;
           }
         }
+      } else if (updateProjectile(this, pr, dt)) {
+        continue;                                  // lobbed: flies over walls
       }
       // walls stop projectiles
+      if (pr.life <= 0) continue;
       const c = collide(this.map, pr.x, pr.y, 2, true);
-      if (c.x !== pr.x || c.y !== pr.y) pr.life = 0;
+      if (c.x !== pr.x || c.y !== pr.y) { projectileWall(this, pr, c); pr.life = 0; }
     }
     this.projectiles = this.projectiles.filter(pr => pr.life > 0);
 
-    // deposit at the van
+    // deposit at the van: what you carry, plus any hypnotized alien that
+    // follows (or sleepwalks) you into the glow
+    let secured = 0;
     if (p.carried.length && Math.hypot(p.x - this.vanDoor.x, p.y - this.vanDoor.y) < DEPOSIT_R) {
-      for (const a of p.carried) {
-        a.state = 'deposited';
-        this.captured++;
-        if (!this.mission.sandbox) save.totalCaptured++;
-      }
-      sfx.deposit(); sfx.cash();
-      this.popup(this.vanDoor.x, this.vanDoor.y - 24, `+${p.carried.length} SECURED`, '#59d98c');
-      this.puff(this.vanDoor.x, this.vanDoor.y - 8, '#59d98c');
+      for (const a of p.carried) { this.secureAlien(a); secured++; }
       p.carried.length = 0;
+    }
+    for (const a of this.aliens) {
+      if (a.state === 'hypno' && Math.hypot(a.x - this.vanDoor.x, a.y - this.vanDoor.y) < DEPOSIT_R) {
+        this.secureAlien(a); secured++;
+      }
+    }
+    if (secured) {
+      sfx.deposit(); sfx.cash();
+      this.popup(this.vanDoor.x, this.vanDoor.y - 24, `+${secured} SECURED`, '#59d98c');
+      this.puff(this.vanDoor.x, this.vanDoor.y - 8, '#59d98c');
     }
 
     // mission clock (sandbox runs with no time limit never call the UFO in)
@@ -508,7 +590,7 @@ export class Game {
     setButtonCooling('hint-sprint', input.edgeSpent || p.stamina <= 1);
 
     // mission end?
-    const loose = this.aliens.filter(a => a.free || a.state === 'beaming');
+    const loose = this.aliens.filter(a => a.free || a.state === 'beaming' || a.state === 'airlift');
     if (this.phase === 'beam' && loose.length === 0) {
       if (p.carried.length > 0) {
         this.phase = 'return';
@@ -526,16 +608,18 @@ export class Game {
     const u = this.ufo;
     if (!u) return;
     if (u.state === 'pick') {
-      const next = this.aliens.find(a => a.free);
+      const next = this.aliens.find(a => this.ufoCanTake(a));
       if (!next) {
-        u.state = 'leave';
+        // hypnotized / hooked / airlifted aliens can still slip free: hover
+        // until they're dealt with, only leave once nobody is left
+        if (!this.aliens.some(a => a.free || a.state === 'airlift')) u.state = 'leave';
         return;
       }
       u.target = next;
       u.state = 'travel';
     } else if (u.state === 'travel') {
       const t = u.target;
-      if (!t.free) { u.state = 'pick'; return; }
+      if (!this.ufoCanTake(t)) { u.state = 'pick'; return; }
       const tx = t.x, ty = t.y - 64;
       const d = Math.hypot(tx - u.x, ty - u.y);
       const sp = 170 * dt;
@@ -543,7 +627,7 @@ export class Game {
       else { u.x += (tx - u.x) / d * sp; u.y += (ty - u.y) / d * sp; }
     } else if (u.state === 'channel') {
       const t = u.target;
-      if (!t.free) { u.state = 'pick'; return; }
+      if (!this.ufoCanTake(t)) { u.state = 'pick'; return; }
       // track slowly if target still moving
       u.x += (t.x - u.x) * Math.min(1, dt * 4);
       u.t += dt;
@@ -696,6 +780,9 @@ export class Game {
       ctx.fillRect(0, 0, vw, vh);
     }
 
+    // bait, evac beams: flat on the ground under everything
+    renderGround(this, ctx, camX, camY);
+
     // ---- build y-sorted render list ----
     const items = [];
     for (const pr of map.props) items.push({ y: pr.baseY, kind: 'prop', pr });
@@ -707,6 +794,8 @@ export class Game {
       }
       items.push({ y: a.y, kind: 'alien', a });
     }
+    for (const d of this.decoys) items.push({ y: d.y, kind: 'decoy', d });
+    for (const c of this.deployables) if (c.kind === 'cage') items.push({ y: c.y + 0.5, kind: 'cage', c });
     items.push({ y: p.y, kind: 'player' });
     items.push({ y: map.van.y + 28, kind: 'van' });
     items.sort((i1, i2) => i1.y - i2.y);
@@ -730,6 +819,10 @@ export class Game {
         this.drawPlayer(ctx, camX, camY);
       } else if (it.kind === 'alien') {
         this.drawAlien(ctx, it.a, camX, camY);
+      } else if (it.kind === 'decoy') {
+        this.drawDecoy(ctx, it.d, camX, camY);
+      } else if (it.kind === 'cage') {
+        drawCage(this, ctx, it.c, camX, camY);
       } else if (it.kind === 'hidden') {
         // Noise Maker ping marker (fades out over its last second)
         const a = it.a;
@@ -783,6 +876,9 @@ export class Game {
     // beam + UFO on top
     if (this.ufo) this.drawUfo(ctx, camX, camY);
 
+    // weapon fx: zaps, hook lines, darts, lobbed bait, courier drones
+    renderTop(this, ctx, camX, camY);
+
     // projectiles
     for (const pr of this.projectiles) {
       if (pr.type === 'bolt') {
@@ -790,7 +886,7 @@ export class Game {
         ctx.fillRect(Math.round(pr.x - 2 - camX), Math.round(pr.y - 2 - camY), 4, 4);
         ctx.fillStyle = '#e8f6ff';
         ctx.fillRect(Math.round(pr.x - 1 - camX), Math.round(pr.y - 1 - camY), 2, 2);
-      } else {
+      } else if (pr.type === 'net') {
         ctx.strokeStyle = '#ffd75e';
         ctx.lineWidth = 1;
         ctx.strokeRect(Math.round(pr.x - 4 - camX), Math.round(pr.y - 4 - camY), 8, 8);
@@ -829,6 +925,11 @@ export class Game {
       if (this.droneTracks(a)) this.droneArrow(ctx, vw, vh, camX, camY, a);
       else if (endgame) this.edgeArrow(ctx, vw, vh, camX, camY, a.x, a.y, '#ffd75e');
     }
+    // a full cage out of sight: go collect it; decoys: where your helpers are
+    for (const c of this.deployables) {
+      if (c.kind === 'cage' && c.held) this.edgeArrow(ctx, vw, vh, camX, camY, c.x, c.y, '#ffb35e');
+    }
+    for (const d of this.decoys) this.edgeArrow(ctx, vw, vh, camX, camY, d.x, d.y, '#ffb07a');
 
     // Noise Maker white-out
     if (this.flash > 0) {
@@ -931,6 +1032,7 @@ export class Game {
         stackY -= 9;
       }
       if (p.state === 'stunned') this.drawStars(ctx, x, y - 20 - lift);
+      if (p.shieldT > 0) this.drawShield(ctx, p, x, y - lift);
       if (p.sprinting && Math.random() < 0.3) {
         this.particles.push({ x: p.x - p.dir.x * 6, y: p.y, vx: -p.dir.x * 10, vy: -4, life: 0.3, t: 0.3, color: '#c8c8d0', size: 1 });
       }
@@ -953,7 +1055,34 @@ export class Game {
     this.drawWalking(ctx, img, x - 5, y - 11 - lift, a.walkT, moving && a.z === 0);
     ctx.globalAlpha = 1;
 
-    if (a.state === 'netted') {
+    if (a.state === 'stunned' && a.look === 'ice') {
+      // frozen solid: a pale block of ice round it
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = '#bfefff';
+      ctx.fillRect(x - 6, y - 13 - lift, 12, 14);
+      ctx.globalAlpha = 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x - 5, y - 12 - lift, 1, 5);
+      ctx.fillRect(x - 4, y - 12 - lift, 3, 1);
+      ctx.globalAlpha = 1;
+    }
+    if (a.state === 'hypno') {
+      // spinning spiral eyes over its head
+      const t = this.time * 8;
+      for (let i = 0; i < 4; i++) {
+        const ang = t + i * Math.PI / 2;
+        ctx.fillStyle = i % 2 ? '#e08bff' : '#ffffff';
+        ctx.fillRect(Math.round(x + Math.cos(ang) * 3) - 1, Math.round(y - 17 - lift + Math.sin(ang) * 1.5), 2, 1);
+      }
+    }
+    if (a.drowsyT > 0 && Math.floor(this.time * 4) % 2) {
+      ctx.fillStyle = '#c9a8ff';
+      ctx.fillRect(x + 4, y - 16 - lift, 2, 1);
+      ctx.fillRect(x + 5, y - 15 - lift, 1, 1);
+      ctx.fillRect(x + 4, y - 14 - lift, 2, 1);
+    }
+
+    if (a.state === 'netted' && !a.cage) {
       ctx.strokeStyle = '#ffd75e';
       ctx.lineWidth = 1;
       ctx.strokeRect(x - 6, y - 12 - lift, 12, 13);
@@ -962,7 +1091,10 @@ export class Game {
       ctx.moveTo(x, y - 12 - lift); ctx.lineTo(x, y + 1 - lift);
       ctx.stroke();
     }
-    if (a.state === 'stunned') this.drawStars(ctx, x, y - 16 - lift);
+    if (a.state === 'stunned') {
+      if (a.look === 'zzz') this.drawZzz(ctx, x, y - 16 - lift);
+      else if (a.look !== 'ice') this.drawStars(ctx, x, y - 16 - lift, a.look === 'zap' ? '#9fe8ff' : '#ffd75e');
+    }
     if (a.state === 'attack') {
       ctx.fillStyle = '#ff5e6c';
       ctx.fillRect(x - 1, y - 18 - lift, 2, 4);
@@ -970,12 +1102,74 @@ export class Game {
     }
   }
 
-  drawStars(ctx, x, y) {
+  drawStars(ctx, x, y, color = '#ffd75e') {
     for (let i = 0; i < 3; i++) {
       const a = this.time * 6 + i * (Math.PI * 2 / 3);
-      ctx.fillStyle = '#ffd75e';
+      ctx.fillStyle = color;
       ctx.fillRect(Math.round(x + Math.cos(a) * 7) - 1, Math.round(y + Math.sin(a) * 2) - 1, 2, 2);
     }
+  }
+
+  // Tranq'd / food coma: little Zs drifting up
+  drawZzz(ctx, x, y) {
+    for (let i = 0; i < 2; i++) {
+      const k = (this.time * 0.8 + i * 0.5) % 1;
+      const zx = Math.round(x + 2 + k * 5 + i * 2), zy = Math.round(y + 2 - k * 8);
+      ctx.globalAlpha = 1 - k;
+      ctx.fillStyle = '#c9a8ff';
+      ctx.fillRect(zx, zy, 3, 1);
+      ctx.fillRect(zx + 1, zy + 1, 1, 1);
+      ctx.fillRect(zx, zy + 2, 3, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // Riot Shield bubble (blinks as it runs out)
+  drawShield(ctx, u, x, y) {
+    if (u.shieldT < 1 && Math.floor(this.time * 12) % 2) return;
+    const pulse = 0.35 + 0.15 * Math.sin(this.time * 8);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = '#7fe3ff';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 8, 11, 12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.9;
+    ctx.strokeStyle = WEAPONS.shield[u.shieldLv] && WEAPONS.shield[u.shieldLv].bash ? '#ffffff' : '#bff4ff';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  // Decoy Agent: the agent's own sprite, tinted like a blow-up doll and
+  // wobbling as it runs, with its HP pips overhead.
+  drawDecoy(ctx, d, camX, camY) {
+    if (!this.decoySprites) {
+      this.decoySprites = {};
+      for (const [k, img] of Object.entries(this.assets.actors.player)) {
+        const c = document.createElement('canvas');
+        c.width = img.width; c.height = img.height;
+        const g = c.getContext('2d');
+        g.drawImage(img, 0, 0);
+        g.globalCompositeOperation = 'source-atop';
+        g.fillStyle = 'rgba(255, 150, 90, 0.42)';
+        g.fillRect(0, 0, c.width, c.height);
+        this.decoySprites[k] = c;
+      }
+    }
+    const x = Math.round(d.x - camX), y = Math.round(d.y - camY);
+    if (d.t < 2 && Math.floor(this.time * 10) % 2) return;   // about to deflate
+    this.shadow(ctx, x, y, 12);
+    const img = this.decoySprites[d.facing] || this.decoySprites.down;
+    const wob = Math.round(Math.sin(this.time * 9 + d.wob) * 1);
+    this.drawWalking(ctx, img, x - 6 + wob, y - 15, d.walkT, d.moving);
+    // air valve
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x + 4 + wob, y - 15, 1, 1);
+    for (let i = 0; i < d.maxHp; i++) {
+      ctx.fillStyle = i < d.hp ? '#ffb07a' : '#3a2a2a';
+      ctx.fillRect(x - d.maxHp * 1.5 + i * 3, y - 21, 2, 2);
+    }
+    if (d.shieldT > 0) this.drawShield(ctx, d, x, y);
   }
 
   drawUfo(ctx, camX, camY) {

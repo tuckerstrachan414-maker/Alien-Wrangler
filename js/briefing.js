@@ -30,12 +30,16 @@ const MAP_INTEL = {
 // What the popup says when you tap an alien card.
 export const TIER_INTEL = {
   grunt: { name: 'GRUNT', threat: 'LOW', cls: 'lo', tags: ['SLOW', 'TACKLES'],
+    counters: ['BAIT', 'CAGE', 'DART', 'HYPNO'],
     notes: 'The rank and file. Slow on its feet and hides a lot, so check the bushes. Corner one for too long and it will tackle you.' },
   scout: { name: 'SCOUT', threat: 'MODERATE', cls: 'md', tags: ['FAST', 'DASHES', 'TACKLES'],
+    counters: ['NET', 'ZAP', 'DART', 'CAGE', 'HOOK'],
     notes: 'Quick and jumpy. It panic-dashes away the moment you get close, so cut off its escape before you dive.' },
   trooper: { name: 'TROOPER', threat: 'HIGH', cls: 'hi', tags: ['ARMORED', 'STUN BOLTS'],
+    counters: ['ZAP III', 'DART II', 'CAGE', 'CRYO II', 'SHIELD', 'NET'],
     notes: 'Armored: your first grab only knocks the helmet off. Fires stun bolts that make you drop whatever you carry, and the UFO beams it out faster.' },
   elite: { name: 'ELITE', threat: 'SEVERE', cls: 'sv', tags: ['CLOAKS', 'FAST', 'STUN BOLTS'],
+    counters: ['NOISE', 'ZAP II', 'CRYO', 'SHIELD', 'HOOK II'],
     notes: 'Cloaks while running and is near-invisible. Dashes, fires stun bolts and beams out fastest. A Noise Maker bang knocks the cloak off.' },
 };
 export const TIER_ORDER = ['grunt', 'scout', 'trooper', 'elite'];
@@ -135,6 +139,7 @@ function wireIntel(paper, m, assets) {
       `<div><b>${ti.name} &times;${m.aliens[tier]}</b><span class="threat ${ti.cls}">THREAT: ${ti.threat}</span></div>` +
       `<button class="intel-x" aria-label="Close">&times;</button></div>` +
       `<div class="intel-tags">${ti.tags.map(t => `<i>${t}</i>`).join('')}</div>` +
+      `<div class="intel-tags counters"><span>COUNTERS:</span>${ti.counters.map(t => `<i>${t}</i>`).join('')}</div>` +
       `<p>${ti.notes.toUpperCase()}</p>`;
     drawAlien(pop.querySelector('canvas'), assets.actors.aliens[tier].down, 2);
     pop.querySelector('.intel-x').addEventListener('click', (ev) => { ev.stopPropagation(); close(); sfx.click(); });

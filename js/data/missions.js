@@ -200,15 +200,107 @@ export const GEAR = [
     desc: 'Set off a deafening BANG: hidden aliens close by are knocked out of cover and stunned; loose ones close by just lose their cloak; hidden ones further out get pinged.',
     levels: [
       { price: 450, label: 'Stun 2s in 72px, ping 140px, 14s reload' },
-      { price: 1200, label: 'Mk.II \u2014 stun 2.8s in 100px, ping 220px, 10s reload' },
+      { price: 1200, label: 'Mk.II — stun 2.8s in 100px, ping 220px, 10s reload' },
+      { price: 2600, label: 'Mk.III SONIC BOOM — 120px, and it stuns running aliens too' },
     ],
   },
   {
     id: 'netgun', name: 'Net Gun', icon: '\u{1F578}', gadget: true, short: 'NET',
-    desc: 'Fire a net that pins an alien for 3s. 6s reload.',
+    desc: 'Fire a net that pins an alien for 3s. Pinned aliens can be grabbed straight through their armor.',
     levels: [
-      { price: 800, label: 'Net Gun Mk.I' },
-      { price: 1600, label: 'Mk.II — 4s pin, faster reload' },
+      { price: 800, label: '3s pin, 6s reload' },
+      { price: 1600, label: 'Mk.II — 4s pin, 4.5s reload' },
+      { price: 3000, label: 'Mk.III SCATTER NET — fires 3 nets in a spread' },
+    ],
+  },
+  {
+    id: 'stungun', name: 'Stun Gun', icon: '⚡', gadget: true, short: 'ZAP',
+    desc: 'Taser shot with aim assist. Stuns the alien it hits, even one hiding in a bush. Upgrades turn it into chain lightning that jumps between aliens.',
+    levels: [
+      { price: 500, label: 'Stuns one alien 3s, 4.5s reload' },
+      { price: 1200, label: 'Mk.II CHAIN — jumps to 3 more aliens nearby' },
+      { price: 2600, label: 'Mk.III ARC — up to 5 targets, each hit twice, fries helmets, 4s reload' },
+    ],
+  },
+  {
+    id: 'dart', name: 'Tranq Dart', icon: '\u{1F489}', gadget: true, short: 'DART',
+    desc: 'Silent long-range dart. The alien gets drowsy, then falls asleep where it stands. Makes no noise at all.',
+    levels: [
+      { price: 400, label: 'Sleep 2.5s, bounces off helmets, 4s reload' },
+      { price: 1000, label: 'Mk.II — armor-piercing, sleep 4s, 3s reload' },
+      { price: 2200, label: 'Mk.III SNORE CLOUD — sleepers knock out aliens around them' },
+    ],
+  },
+  {
+    id: 'bait', name: 'Bait Burger', icon: '\u{1F354}', gadget: true, short: 'BAIT',
+    desc: 'Toss a burger. Hidden and running aliens nearby sneak over to eat it, and while they chew they ignore you.',
+    levels: [
+      { price: 300, label: 'Lures within 110px for 8s' },
+      { price: 800, label: 'Mk.II DOUBLE STACK — 170px, 12s, pulls attackers off you' },
+      { price: 1800, label: 'Mk.III FOOD COMA — eaters pass out for 4s after' },
+    ],
+  },
+  {
+    id: 'cage', name: 'Trap Cage', icon: '\u{1FAA4}', gadget: true, short: 'CAGE',
+    desc: 'Drop a spring cage. The first loose alien to run over it is locked in, armor and all, until you come for it.',
+    levels: [
+      { price: 500, label: '1 cage, holds 10s' },
+      { price: 1200, label: 'Mk.II — 2 cages out, holds 18s' },
+      { price: 2800, label: 'Mk.III COURIER — a drone flies caged aliens to the van' },
+    ],
+  },
+  {
+    id: 'hook', name: 'Grapple Hook', icon: '\u{1FA9D}', gadget: true, short: 'HOOK',
+    desc: 'Fire a hook line. Hit an alien and it is reeled into your hands, even out of the UFO beam. Hit a wall and it zips you there.',
+    levels: [
+      { price: 700, label: '150px, snatches low in the beam, 6s reload' },
+      { price: 1500, label: 'Mk.II — 200px, snatches at any beam height, 4.5s reload' },
+      { price: 3000, label: 'Mk.III CHAIN HOOK — reels in a second alien too' },
+    ],
+  },
+  {
+    id: 'decoy', name: 'Decoy Agent', icon: '\u{1F388}', gadget: true, short: 'DECOY',
+    desc: 'Inflate a decoy agent that runs around hunting aliens and herding them toward you. It cannot grab, but it uses your gear, and aliens attack it instead of you.',
+    levels: [
+      { price: 800, label: '3 HP, 12s, uses your other equipped gadget' },
+      { price: 1800, label: 'Mk.II — 5 HP, 20s, uses every gadget you own' },
+      { price: 3400, label: 'Mk.III SQUAD — deploys two decoy agents' },
+    ],
+  },
+  {
+    id: 'shield', name: 'Riot Shield', icon: '\u{1FAE7}', gadget: true, short: 'SHIELD',
+    desc: 'Energy bubble that blocks stun bolts and tackles, so you keep hold of what you are carrying. Tacklers bounce off stunned for 2s, right in grabbing range.',
+    levels: [
+      { price: 650, label: '4s bubble, 12s reload' },
+      { price: 1500, label: 'Mk.II — 6s, reflects bolts back at the shooter, 9s reload' },
+      { price: 2800, label: 'Mk.III SHIELD BASH — run into aliens to bowl them over' },
+    ],
+  },
+  {
+    id: 'cryo', name: 'Cryo Sprayer', icon: '❄️', gadget: true, short: 'CRYO',
+    desc: 'Spray a cone of freezing mist. Every loose alien caught in it freezes solid.',
+    levels: [
+      { price: 900, label: '70px cone, freeze 2.2s, 7s reload' },
+      { price: 1900, label: 'Mk.II — 90px, 3.2s, shatters helmets, 5s reload' },
+      { price: 3400, label: 'Mk.III BLIZZARD — a 360° freeze nova around you' },
+    ],
+  },
+  {
+    id: 'hypno', name: 'Hypno Ray', icon: '\u{1F300}', gadget: true, short: 'HYPNO',
+    desc: 'A spiral beam that hypnotizes an alien into following you like a duckling. Lead it into the van glow to secure it. It does not count against your carry limit.',
+    levels: [
+      { price: 900, label: 'One follower for 10s, 12s reload' },
+      { price: 2000, label: 'Mk.II — up to 2 followers for 16s, 10s reload' },
+      { price: 3600, label: 'Mk.III SLEEPWALK — they walk themselves to the van' },
+    ],
+  },
+  {
+    id: 'evac', name: 'Evac Beacon', icon: '\u{1F681}', gadget: true, short: 'EVAC',
+    desc: 'Beam every alien you are carrying straight into the van from wherever you are. Only fires when there is something to evac.',
+    levels: [
+      { price: 1200, label: 'Evac what you carry, 45s reload' },
+      { price: 2400, label: 'Mk.II — 25s reload' },
+      { price: 4000, label: 'Mk.III MASS EVAC — also beams up stunned, pinned and caged aliens around you' },
     ],
   },
   {
@@ -247,7 +339,68 @@ export const NOISE_MAKER = [
   null,
   { stunR: 72, stunT: 2.0, pingR: 140, pingT: 5, cd: 14 },
   { stunR: 100, stunT: 2.8, pingR: 220, pingT: 7, cd: 10 },
+  { stunR: 120, stunT: 3.0, pingR: 260, pingT: 8, cd: 9, loose: true },
 ];
+
+// Tuning for every hand-fired weapon (index = level, 0 = not owned).
+// Distances are world px, times are seconds. Read by weapons.js / decoy.js.
+export const WEAPONS = {
+  netgun: [null,
+    { pin: 3, cd: 6, nets: 1 },
+    { pin: 4, cd: 4.5, nets: 1 },
+    { pin: 4, cd: 4.5, nets: 3 },
+  ],
+  stungun: [null,
+    { range: 120, stun: 3.0, chain: 0, chainR: 0, hits: 1, cd: 4.5 },
+    { range: 125, stun: 3.0, chain: 3, chainR: 60, hits: 1, cd: 4.5 },
+    { range: 130, stun: 3.2, chain: 4, chainR: 66, hits: 2, cd: 4 },
+  ],
+  dart: [null,
+    { range: 240, drowsy: 1.2, sleep: 2.5, pierce: false, snore: 0, cd: 4 },
+    { range: 250, drowsy: 1.0, sleep: 4.0, pierce: true, snore: 0, cd: 3 },
+    { range: 270, drowsy: 1.0, sleep: 4.0, pierce: true, snore: 40, cd: 3 },
+  ],
+  bait: [null,
+    { lure: 110, t: 8, attackers: false, coma: 0, cd: 10 },
+    { lure: 170, t: 12, attackers: true, coma: 0, cd: 9 },
+    { lure: 170, t: 12, attackers: true, coma: 4, cd: 8 },
+  ],
+  cage: [null,
+    { max: 1, hold: 10, courier: 0, cd: 6 },
+    { max: 2, hold: 18, courier: 0, cd: 5 },
+    { max: 2, hold: 18, courier: 3, cd: 5 },
+  ],
+  hook: [null,
+    { range: 150, beamZ: 26, chain: 0, cd: 6 },
+    { range: 200, beamZ: 99, chain: 0, cd: 4.5 },
+    { range: 200, beamZ: 99, chain: 60, cd: 4.5 },
+  ],
+  decoy: [null,
+    { hp: 3, t: 12, count: 1, reach: 130, allOwned: false, cd: 18 },
+    { hp: 5, t: 20, count: 1, reach: 170, allOwned: true, cd: 16 },
+    { hp: 5, t: 20, count: 2, reach: 170, allOwned: true, cd: 16 },
+  ],
+  shield: [null,
+    { t: 4, reflect: false, bash: false, cd: 12 },
+    { t: 6, reflect: true, bash: false, cd: 9 },
+    { t: 6, reflect: true, bash: true, cd: 9 },
+  ],
+  cryo: [null,
+    { range: 70, cone: 35, t: 2.2, shatter: false, nova: false, cd: 7 },
+    { range: 90, cone: 35, t: 3.2, shatter: true, nova: false, cd: 5 },
+    { range: 80, cone: 180, t: 3.2, shatter: true, nova: true, cd: 5 },
+  ],
+  hypno: [null,
+    { range: 100, cone: 26, t: 10, max: 1, walk: false, cd: 12 },
+    { range: 110, cone: 40, t: 16, max: 2, walk: false, cd: 10 },
+    { range: 110, cone: 40, t: 16, max: 2, walk: true, cd: 10 },
+  ],
+  evac: [null,
+    { cd: 45, mass: 0 },
+    { cd: 25, mass: 0 },
+    { cd: 25, mass: 80 },
+  ],
+};
 
 // Compute an effect value from gear levels (lv = 0 means not owned)
 export function gearEffects(levels) {
@@ -258,10 +411,12 @@ export function gearEffects(levels) {
     grabMul: 1 + [0, 0.2, 0.4, 0.65][lv('gloves')],
     recoveryMul: [1, 0.65, 0.4][lv('kneepads')],
     carryMax: [1, 2, 3][lv('sack')],
-    noisemaker: lv('noisemaker'), // 0 none, 1 mk1, 2 mk2
+    noisemaker: lv('noisemaker'), // 0 none, 1 mk1, 2 mk2, 3 mk3
     drones: lv('drones'),         // 0 none, 1 mk1, 2 mk2
-    netgun: lv('netgun'), // 0 none, 1 mk1, 2 mk2
+    netgun: lv('netgun'),         // 0 none, 1 mk1, 2 mk2, 3 mk3
     stunMul: [1, 0.6, 0.3][lv('vest')],
+    // every item's level by id (weapons.js reads its tier from here)
+    lv: Object.fromEntries(GEAR.map(g => [g.id, lv(g.id)])),
   };
 }
 

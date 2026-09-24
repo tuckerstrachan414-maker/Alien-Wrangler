@@ -48,7 +48,7 @@ Both work in portrait and landscape.
 | Zone | Control |
 |---|---|
 | Left thumb | Floating joystick to move |
-| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · one button per equipped **gadget** (labelled NET / NOISE) |
+| Right thumb | **SPRINT** (toggle running on/off — drains stamina) · **GRAB** (close range) · **DIVE** (long lunge — miss and you eat dirt for a second) · **DASH** (quick burst) · **JUMP** (clear fences, hay bales, crates) · one button per equipped **gadget** (labelled with its name, e.g. ZAP / NET) |
 
 ### No-buttons mode
 
@@ -122,16 +122,33 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 
 Track Shoes · Field Training (stamina) · Grip Gloves · Kneepads · Alien Sack · Stun-Proof Vest
 
-**Gadgets** (Noise Maker, Net Gun) are the gear you fire by hand. You can own them all, but only
+**Gadgets** are the weapons you fire by hand. There are twelve, each with **three upgrade tiers** (Mk.I → Mk.II → Mk.III),
+and the Mk.III of every one changes *how* it plays, not just its numbers. You can own them all, but only
 **two ride along** on a mission: slot 1 (TAP / button 1) and slot 2 (SWIPE RIGHT / button 2). Pick the slots
 on the gadget's shop card, in the briefing's personnel file, or in the Sandbox loadout. Buying your first
-gadgets fills empty slots automatically.
+gadgets fills empty slots automatically. Tap a gadget's card in the shop to see all three tiers.
 
-- **Noise Maker** (replaces the old Tracker Goggles; if you owned goggles, you keep that level as a Noise Maker)
-  sets off a deafening **BANG** around you. Aliens close by are knocked out of hiding, out of cloak and
-  even out of the UFO's beam, then stunned. Hidden aliens further out get pinged with a marker for a few seconds.
-  Mk.I: 2s stun in 72px, ping 140px, 14s reload. Mk.II: 2.8s stun in 100px, ping 220px, 10s reload.
-  On Maple Street a bang is the loudest thing you can do, so expect to wake the block.
+| Gadget (button) | Mk.I | Mk.II | Mk.III |
+|---|---|---|---|
+| 💥 **Noise Maker** (NOISE) | Deafening BANG: hidden aliens within 72px are knocked out of cover and stunned 2s, loose ones lose their cloak, hidden ones out to 140px get pinged. 14s reload | 100px, 2.8s stun, 220px ping, 10s reload | **Sonic Boom**: 120px, and it stuns running aliens too |
+| 🕸 **Net Gun** (NET) | Net pins an alien 3s; pinned aliens are grabbed straight through armor. 6s reload | 4s pin, 4.5s reload | **Scatter Net**: three nets in a spread |
+| ⚡ **Stun Gun** (ZAP) | Instant taser shot, stuns one alien 3s, even one hiding in a bush. 4.5s reload (a miss only takes a 1s re-arm) | **Chain lightning**: jumps to up to 3 more aliens within 60px | **Arc**: up to 5 targets and the arc doubles back, hitting each twice. A second hit fries a Trooper's helmet off |
+| 💉 **Tranq Dart** (DART) | Silent long-range dart: drowsy (half speed), then asleep 2.5s. Bounces off helmets. 4s reload | Armor-piercing, 4s sleep, 3s reload | **Snore Cloud**: a sleeper knocks out every alien within 40px of it |
+| 🍔 **Bait Burger** (BAIT) | Toss a burger: hidden and running aliens within 110px sneak over to eat it for 8s, ignoring you while they chew | **Double Stack**: 170px, 12s, and it even pulls attacking aliens off you | **Food Coma**: aliens that ate pass out for 4s after |
+| 🪤 **Trap Cage** (CAGE) | Spring cage at your feet: the first loose alien over it is locked in for 10s, grabbable through armor. Full cages get an edge arrow | Two cages out at once, 18s hold | **Courier**: a drone airlifts caged aliens straight to the van |
+| 🪝 **Grapple Hook** (HOOK) | 150px line: reels an alien into your hands, even out of a low UFO beam. Hit a wall and it zips you there, over fences and bales. 6s reload | 200px, snatches at *any* beam height, 4.5s reload | **Chain Hook**: carries on to a second alien and reels in both |
+| 🎈 **Decoy Agent** (DECOY) | Inflatable agent that **hunts aliens**: it swings round to the far side of one and drives it toward you, flushes hiders, and aliens caught between you and it are **CORNERED** (they cower, ready to grab). It can't grab. Aliens shoot and tackle it instead of you (3 HP, 12s). It fires the **other gadget in your loadout** | 5 HP, 20s, and it uses **every gadget you own** (cages, darts, nets, zaps, bait, cryo, noise, hypno, shield) | **Squad**: two decoy agents at once |
+| 🫧 **Riot Shield** (SHIELD) | 4s bubble that blocks stun bolts and tackles, so you keep what you carry. Tacklers bounce off stunned for 2s, right in grabbing range. 12s reload | 6s, reflects bolts back to stun the shooter, 9s reload | **Shield Bash**: run into aliens to bowl them over |
+| ❄️ **Cryo Sprayer** (CRYO) | 70px cone of freezing mist: every loose alien in it freezes solid 2.2s. 7s reload (a spray that hits nothing only takes a 1.5s re-arm) | 90px, 3.2s, shatters helmets, 5s reload | **Blizzard**: a 360° freeze nova around you |
+| 🌀 **Hypno Ray** (HYPNO) | Hypnotizes an alien into following you in a conga line for 10s. It doesn't count against your carry limit; walk it into the van glow to secure it. Getting stunned breaks the trance, and the UFO can't take it. 12s reload | Up to 2 followers, 16s, 10s reload | **Sleepwalk**: hypnotized aliens walk themselves to the van |
+| 🚁 **Evac Beacon** (EVAC) | Beams everything you're carrying straight into the van from wherever you are. Only fires (and only spends its reload) when there's something to evac; the button dims otherwise. 45s reload | 25s reload | **Mass Evac**: also beams up every stunned, pinned, caged, sleeping or frozen alien within 80px |
+
+On Maple Street the Dart, Bait, Cage, Shield and Hypno are silent. The Stun Gun, Hook, Cryo, Decoy and Evac
+make a little noise, and the Noise Maker is still the loudest thing you can do.
+
+The mission brief's alien intel popups list **COUNTERS**: the gadgets that work best on that tier.
+
+If you owned the old Tracker Goggles, you keep that level as a Noise Maker.
 
 **Perks**
 
@@ -141,15 +158,10 @@ gadgets fills empty slots automatically.
 
 ### Gadget brainstorm (future)
 
-Ideas on the table for the next batch — pick favorites:
+Ideas still on the table:
 
-- **Bait Burger** — drop it, nearby aliens can't resist sneaking out for a bite
-- **Trap Cage** — place it in an alley, aliens that run over it get boxed
-- **Cardboard Box** — crouch disguise; hidden aliens don't flush while you wear it
-- **Grapple Hook** — yank yourself over containers / across the map
-- **EMP Grenade** — disables Elite cloaks and Trooper pistols for 10s
-- **Roller Shoes** — hold sprint downhill… everywhere
-- **Decoy Agent** — inflatable agent that aliens flee from, herding them toward you
+- **Cardboard Box**: crouch disguise; hidden aliens don't flush while you wear it
+- **Roller Shoes**: hold sprint downhill… everywhere
 
 ## 🛠️ Dev notes
 
@@ -172,9 +184,11 @@ js/input.js         joystick + buttons, split-screen gesture scheme, keyboard fa
 js/ui.js            title / play hub / missions / briefing / shop / settings / sandbox / results / pause
 js/briefing.js      mission brief: CIA memo builder, alien intel cards, typewriter effect, personnel file
 js/loadout.js       two-slot gadget loadout (resolve against owned gear, equip / cycle / swap)
+js/weapons.js       every hand-fired gadget: fire / cooldown / world fx, shared by the agent and decoys
+js/decoy.js         Decoy Agent AI (flank-and-herd hunting, uses your gear, can't grab)
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/maps.js     the five maps
-js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog
+js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
 js/save.js          localStorage save (progress + settings + sandbox loadout)
 js/audio.js         WebAudio synth SFX
 ```
