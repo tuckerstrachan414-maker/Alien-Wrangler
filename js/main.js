@@ -8,9 +8,11 @@ import {
 } from './input.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
+import { initVersionBadge } from './version.js';
 
 loadSave();
 setupInput();
+initVersionBadge();
 
 const assets = {
   tiles: buildTiles(),

@@ -51,6 +51,28 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* ---------- build version tag (always on, very top of screen) ----------
+   Pinned above everything, including the notch/status-bar area, so it's
+   readable at a glance whether the page is a fresh deploy or a stale/cached
+   old build. Non-interactive: it must never eat a tap meant for the HUD or
+   menus underneath it. */
+#build-version {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 9999;
+  pointer-events: none;
+  text-align: center;
+  font-size: 7px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: rgba(232, 236, 244, 0.55);
+  background: rgba(5, 7, 13, 0.55);
+  padding: 2px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 #game {
   position: absolute;
   inset: 0;
