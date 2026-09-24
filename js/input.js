@@ -61,12 +61,33 @@ export const input = {
   sprintToggle: false,   // SPRINT button (buttons mode toggle)
   sprintEdge: false,     // no-buttons: thumb pushed out past the sprint ring
   edgeSpent: false,      // stamina ran dry at the ring: ease back inside it to re-arm
-  get sprint() { return this.sprintToggle || this.sprintHeld || (this.sprintEdge && !this.edgeSpent); },
+  sprintPad: false,      // gamepad trigger/bumper/stick-click (hold-to-sprint)
+  get sprint() { return this.sprintToggle || this.sprintHeld || this.sprintPad || (this.sprintEdge && !this.edgeSpent); },
   presses: {},           // edge-triggered action flags
 };
 
 let controlMode = 'buttons';
 let gadgetSlots = [];    // equipped gadget GEAR entries, [tap slot, swipe-right slot]
+
+/* ---------------- gamepad mapping ----------------
+   Standard-mapping button indices, shared by Xbox/PlayStation/Switch Pro/most
+   generic pads: 0-3 face buttons, 4-5 shoulder bumpers, 6-7 triggers,
+   8-9 select/start, 10-11 stick clicks, 12-15 d-pad. */
+const GP_ACTION_BUTTONS = {
+  0: 'grab',    // A / Cross
+  2: 'dive',    // X / Square
+  1: 'dash',    // B / Circle
+  3: 'jump',    // Y / Triangle
+  4: 'gadget1', // LB / L1
+  5: 'gadget2', // RB / R1
+  8: 'pause',   // Select/Back/Share
+  9: 'pause',   // Start/Options/Menu
+};
+const GP_SPRINT_BUTTONS = [6, 7, 10, 11]; // LT, RT, L3, R3 — any held = sprint
+const GP_DEADZONE = 0.22;
+
+let pollGamepadsImpl = () => {};
+export function pollGamepads() { pollGamepadsImpl(); }
 
 export function consumePress(name) {
   if (input.presses[name]) { input.presses[name] = false; return true; }
@@ -89,6 +110,7 @@ export function clearInput() {
   input.move.x = 0; input.move.y = 0; input.mag = 0;
   input.sprintHeld = false; input.sprintToggle = false;
   input.sprintEdge = false; input.edgeSpent = false;
+  input.sprintPad = false;
   input.presses = {};
   resetPointers();
   updateSprintVisual();
@@ -424,6 +446,67 @@ export function setupInput() {
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => e.preventDefault());
   document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+  /* ---- gamepad fallback (desktop/console browsers) ----
+     Xbox, PlayStation, Switch Pro and most generic USB/Bluetooth pads all
+     report through the same W3C "standard" button/axis layout once the
+     browser recognizes them, so one mapping drives every brand — no pairing
+     step, no per-controller setup. Any number of pads can be connected at
+     once and all of them drive the same player, so a controller can be
+     swapped or added without anything to configure.
+     The Gamepad API has no input *events* for sticks/triggers, so — unlike
+     the keyboard above — this has to be polled once a frame; pollGamepads()
+     is wired into the render loop in main.js. */
+  const gpPrevPressed = new Map();   // gamepad index -> previous frame's pressed[]
+  let gpMoveActive = false;          // a pad currently owns input.move (vs. touch/keys)
+
+  window.addEventListener('gamepaddisconnected', (e) => gpPrevPressed.delete(e.gamepad.index));
+
+  pollGamepadsImpl = function pollGamepads() {
+    if (!navigator.getGamepads) return;
+    let sprintHeld = false;
+    let move = null;
+    const pads = navigator.getGamepads();
+    for (const gp of pads) {
+      if (!gp || !gp.connected) continue;
+      const prev = gpPrevPressed.get(gp.index) || [];
+      const pressed = gp.buttons.map((b) => b.pressed || b.value > 0.5);
+      for (const key in GP_ACTION_BUTTONS) {
+        const i = +key;
+        if (pressed[i] && !prev[i]) input.presses[GP_ACTION_BUTTONS[i]] = true;
+      }
+      if (GP_SPRINT_BUTTONS.some((i) => pressed[i])) sprintHeld = true;
+      gpPrevPressed.set(gp.index, pressed);
+
+      let x = gp.axes[0] || 0, y = gp.axes[1] || 0;
+      let len = Math.hypot(x, y);
+      if (len <= GP_DEADZONE) {
+        // D-pad as a digital fallback when the stick is centered/absent.
+        x = (pressed[15] ? 1 : 0) - (pressed[14] ? 1 : 0);
+        y = (pressed[13] ? 1 : 0) - (pressed[12] ? 1 : 0);
+        len = Math.hypot(x, y);
+      }
+      if (len > GP_DEADZONE) {
+        const k = Math.min(1, len) / len;
+        move = { x: x * k, y: y * k };
+      }
+    }
+
+    input.sprintPad = sprintHeld;
+    updateSprintVisual();
+
+    if (move) {
+      gpMoveActive = true;
+      input.move.x = move.x; input.move.y = move.y;
+      input.mag = Math.min(1, Math.hypot(move.x, move.y));
+    } else if (gpMoveActive) {
+      gpMoveActive = false;
+      // Hand control back to touch/keyboard instead of stomping them.
+      const keyMoving = keys.KeyA || keys.ArrowLeft || keys.KeyD || keys.ArrowRight ||
+        keys.KeyW || keys.ArrowUp || keys.KeyS || keys.ArrowDown;
+      if (joyId === null && !keyMoving) { input.move.x = 0; input.move.y = 0; input.mag = 0; }
+    }
+  };
 }
 
 // Cooldown display — mirrored onto the gesture legend so both schemes show it.

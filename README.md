@@ -74,6 +74,10 @@ and SWIPE RIGHT, and dims when an action is on cooldown. Turn it off in Settings
 
 Desktop testing: WASD/arrows to move, hold Shift to sprint, J grab, L dive, K dash, Space jump, Q/N gadget 1, E/B gadget 2, P pause.
 
+**Gamepad**: plug in an Xbox, PlayStation, Switch Pro, or other standard USB/Bluetooth controller and it just works, no setup —
+left stick or D-pad to move, A/Cross grab, X/Square dive, B/Circle dash, Y/Triangle jump, LB/L1 gadget 1, RB/R1 gadget 2,
+either trigger or stick click to sprint, Start/Select to pause. Multiple controllers can be connected at once.
+
 ## ⏸️ Pausing
 
 **| |** in the top-left corner pauses. From there you can resume, restart the mission,

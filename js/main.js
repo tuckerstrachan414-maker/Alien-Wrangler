@@ -4,7 +4,7 @@ import { getMission, GEAR } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
 import {
   setupInput, consumePress, clearInput, showGadgets,
-  setControlMode, refreshHints,
+  setControlMode, refreshHints, pollGamepads,
 } from './input.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
@@ -311,6 +311,8 @@ function frame(now) {
   requestAnimationFrame(frame);
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
+
+  pollGamepads();
 
   if (state === 'play') {
     if (consumePress('pause')) { pause(); return; }
