@@ -2,7 +2,7 @@ name: Deploy to GitHub Pages
 
 on:
   push:
-    branches: ["claude/alien-wrangler-game-oy2xm8", "main"]
+    branches: ["Alien-Wrangler-Main", "main"]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +27,12 @@ jobs:
         uses: actions/configure-pages@v5
         with:
           enablement: true
+      - name: Write build version
+        run: |
+          cat > version.json <<EOF
+          {"sha":"$(git rev-parse --short HEAD)","branch":"${GITHUB_REF_NAME}","built":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
+          EOF
+          cat version.json
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
