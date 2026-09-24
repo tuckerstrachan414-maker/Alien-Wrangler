@@ -318,6 +318,16 @@ html, body {
 .gadget-btn { font-size: 5.5px; }
 .gadget-btn[data-gadget="noisemaker"]::before { background-color: #4a2410; }
 .gadget-btn[data-gadget="netgun"]::before { background-color: #3a3316; }
+.gadget-btn[data-gadget="stungun"]::before { background-color: #173a5a; }
+.gadget-btn[data-gadget="dart"]::before { background-color: #35224e; }
+.gadget-btn[data-gadget="bait"]::before { background-color: #5a3614; }
+.gadget-btn[data-gadget="cage"]::before { background-color: #4a3a1e; }
+.gadget-btn[data-gadget="hook"]::before { background-color: #2e3642; }
+.gadget-btn[data-gadget="decoy"]::before { background-color: #5a2a1c; }
+.gadget-btn[data-gadget="shield"]::before { background-color: #154852; }
+.gadget-btn[data-gadget="cryo"]::before { background-color: #1e4a66; }
+.gadget-btn[data-gadget="hypno"]::before { background-color: #4e1e5a; }
+.gadget-btn[data-gadget="evac"]::before { background-color: #1c4a2e; }
 
 /* ---------- No-buttons (gesture) mode ---------- */
 /* The play area splits down the middle: left half walks, right half acts.
@@ -924,6 +934,13 @@ html, body {
 }
 .intel-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 4px; }
 .intel-tags i { font-style: normal; font-size: 4.5px; padding: 1px 3px; background: #3a3246; color: #d8cfb3; }
+.intel-tags.counters span { font-size: 4.5px; padding: 1px 0; color: #59d98c; }
+.intel-tags.counters i { background: #1c3a2a; color: #bff0cf; }
+.gear-tiers { margin: 5px 0 0; padding: 0; list-style: none; }
+.gear-tiers li { font-size: 5px; line-height: 1.5; color: #8f96a8; margin-bottom: 2px; }
+.gear-tiers li b { font-weight: 400; color: #d8cfb3; margin-right: 3px; }
+.gear-tiers li.on { color: #e8ecf5; }
+.gear-tiers li.on b { color: var(--cash); }
 .intel-pop p { margin: 0; }
 .redact { background: #16121c; color: #16121c; letter-spacing: -1px; }
 .doc-small { font-size: 5px; color: #7a6d5c; margin-top: 3px; letter-spacing: 1px; }

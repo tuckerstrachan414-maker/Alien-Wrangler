@@ -27,8 +27,10 @@ export class Player {
     this.carried = [];
     this.dashCd = 0;
     this.grabCd = 0;
-    this.netCd = 0;
-    this.noiseCd = 0;
+    this.cd = {};               // weapon id -> reload seconds left
+    this.shieldT = 0;           // Riot Shield bubble time left
+    this.shieldLv = 0;
+    this.isDecoy = false;
     this.walkT = 0;
     this.moving = false;
     this.diveHit = false;
@@ -91,6 +93,18 @@ export class Player {
     return true;
   }
 
+  // Grapple Hook wall shot: fly to (x, y), clearing fences and bales.
+  zipTo(x, y) {
+    if (!this.canAct) return false;
+    const dx = x - this.x, dy = y - this.y, d = Math.hypot(dx, dy);
+    if (d < 14) return false;
+    this.aim({ x: dx, y: dy });
+    this.state = 'zipping';
+    this.stateT = d / 320;
+    this.vx = dx / d * 320; this.vy = dy / d * 320;
+    return true;
+  }
+
   stun(dur, knockX = 0, knockY = 0) {
     this.state = 'stunned';
     this.stateT = dur * this.fx.stunMul;
@@ -108,8 +122,8 @@ export class Player {
   update(dt, map, moveIn) {
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.grabCd = Math.max(0, this.grabCd - dt);
-    this.netCd = Math.max(0, this.netCd - dt);
-    this.noiseCd = Math.max(0, this.noiseCd - dt);
+    for (const k in this.cd) this.cd[k] = Math.max(0, this.cd[k] - dt);
+    this.shieldT = Math.max(0, this.shieldT - dt);
     this.stateT -= dt;
 
     // vertical (jump)
@@ -146,9 +160,9 @@ export class Player {
       return;
     }
 
-    if (this.state === 'dashing') {
+    if (this.state === 'dashing' || this.state === 'zipping') {
       this.x += this.vx * dt; this.y += this.vy * dt;
-      const p = collide(map, this.x, this.y, this.r, this.airborne);
+      const p = collide(map, this.x, this.y, this.r, this.airborne || this.state === 'zipping');
       this.x = p.x; this.y = p.y;
       if (this.stateT <= 0) { this.state = 'normal'; }
       return;
@@ -211,6 +225,7 @@ export class Player {
 /* ================================ ALIEN ================================ */
 
 let ALIEN_ID = 1;
+const FREE_STATES = ['hiding', 'running', 'attack', 'netted', 'stunned', 'lured', 'reeled', 'hypno'];
 
 export class Alien {
   constructor(tier, spot) {
@@ -221,7 +236,9 @@ export class Alien {
     this.vx = 0; this.vy = 0;
     this.r = 4;
     this.z = 0; this.zv = 0;
-    this.state = 'hiding';       // hiding | running | attack | netted | stunned | carried | deposited | beaming | escaped
+    // hiding | running | attack | netted | stunned | lured | reeled | hypno |
+    // carried | airlift | deposited | beaming | escaped
+    this.state = 'hiding';
     this.stateT = 0;
     this.hideSpot = spot;
     this.facing = 'down';
@@ -243,10 +260,32 @@ export class Alien {
     this.wanderT = 0;
     this.alpha = 1;
     this.revealT = 0;            // Noise Maker ping: marked + can't cloak while > 0
+    this.look = 'stars';         // how a stun is drawn: stars | zzz | ice | zap
+    this.drowsyT = 0;            // Tranq Dart: slowed, then falls asleep
+    this.sleepFor = 0;
+    this.snoreR = 0;
+    this.bait = null;            // Bait Burger it's heading for / eating
+    this.eatT = 0;
+    this.cage = null;            // Trap Cage holding it (state 'netted')
+    this.reelTo = null;          // Grapple Hook: who is reeling it in
+    this.reelT = 0;
+    this.hypnoT = 0;             // Hypno Ray trance
+    this.hypnoWalk = false;
+    this.hypnoIdx = 0;
+    this.hypnoLead = null;
+    this.spath = null;           // seek() path cache
+    this.spathI = 0;
+    this.seekT = 0;
+    this.cornerCd = 0;           // pincer (agent + decoy) grace period
   }
 
-  get free() { return ['hiding', 'running', 'attack', 'netted', 'stunned'].includes(this.state); }
-  get grabbable() { return this.free || (this.state === 'beaming' && this.riseZ < 26); }
+  get free() { return FREE_STATES.includes(this.state); }
+  // under the agent's control already (hypnotized / being reeled in): not
+  // something to grab, stun or beam up
+  get controlled() { return this.state === 'hypno' || this.state === 'reeled'; }
+  get grabbable() {
+    return (this.free && !this.controlled) || (this.state === 'beaming' && this.riseZ < 26);
+  }
 
   flush(game) {
     if (this.state !== 'hiding') return;
@@ -256,10 +295,52 @@ export class Alien {
     game.onAlienFlushed(this);
   }
 
-  stunned(dur) {
+  stunned(dur, look = 'stars') {
     this.state = 'stunned';
     this.stateT = dur;
+    this.look = look;
     this.vx = 0; this.vy = 0;
+  }
+
+  // Tranq Dart: the drowsy spell ran out, so it drops where it stands.
+  fallAsleep(game) {
+    this.drowsyT = 0;
+    if (!this.free || this.controlled) return;
+    if (this.state === 'netted') this.stateT = Math.max(this.stateT, this.sleepFor);
+    else this.stunned(this.sleepFor, 'zzz');
+    game.popup(this.x, this.y - 16, 'ZZZ...', '#c9a8ff');
+    if (this.snoreR) {
+      game.snoreCloud(this, this.snoreR, this.sleepFor * 0.75);
+      this.snoreR = 0;
+    }
+  }
+
+  // Bait Burger: sneak over to it (out of hiding if need be).
+  lure(bait) {
+    this.state = 'lured';
+    this.bait = bait;
+    this.eatT = 0;
+    this.seekT = 0;
+    this.chase = 0;
+  }
+
+  // Walk to (tx, ty), pathing around walls when there's no straight line.
+  seek(game, tx, ty, top, accel, dt) {
+    this.seekT -= dt;
+    if (this.seekT <= 0) {
+      this.seekT = 0.6;
+      this.spath = lineBlocked(game.map, this.x, this.y, tx, ty)
+        ? findPath(game.nav, this.x, this.y, tx, ty) : null;
+      this.spathI = 0;
+    }
+    let dx = tx - this.x, dy = ty - this.y;
+    if (this.spath) {
+      while (this.spathI < this.spath.length - 1 &&
+        Math.hypot(this.spath[this.spathI].x - this.x, this.spath[this.spathI].y - this.y) < 7) this.spathI++;
+      const wp = this.spath[this.spathI];
+      dx = wp.x - this.x; dy = wp.y - this.y;
+    }
+    this.accelToward(dx, dy, top, accel, dt);
   }
 
   update(dt, game) {
@@ -269,6 +350,12 @@ export class Alien {
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.boltCd = Math.max(0, this.boltCd - dt);
     this.revealT = Math.max(0, this.revealT - dt);
+    if (this.drowsyT > 0) {
+      this.drowsyT -= dt;
+      if (this.drowsyT <= 0) this.fallAsleep(game);
+    }
+    const slow = this.drowsyT > 0 ? 0.5 : 1;
+    this.cornerCd = Math.max(0, this.cornerCd - dt);
 
     // hop physics
     if (this.z > 0 || this.zv !== 0) {
@@ -277,6 +364,9 @@ export class Alien {
     }
 
     const distP = Math.hypot(p.x - this.x, p.y - this.y);
+    // what it's running from / fighting: the agent, or a Decoy Agent nearer to it
+    const th = game.threatFor(this);
+    const distT = th === p ? distP : Math.hypot(th.x - this.x, th.y - this.y);
 
     // Elite cloaking while loose (a Noise Maker bang scrambles it for a while)
     if (st.cloak && this.revealT <= 0 && (this.state === 'running' || this.state === 'attack')) {
@@ -299,26 +389,87 @@ export class Alien {
 
       case 'stunned': {
         this.stateT -= dt;
-        if (this.stateT <= 0) { this.state = 'running'; this.chase = 0; }
+        if (this.stateT <= 0) { this.state = 'running'; this.chase = 0; this.look = 'stars'; }
         break;
       }
 
       case 'netted': {
         this.stateT -= dt;
-        if (this.stateT <= 0) { this.state = 'running'; this.chase = -2; }
+        if (this.stateT <= 0) { this.state = 'running'; this.chase = -2; this.cage = null; }
+        break;
+      }
+
+      case 'lured': {
+        const b = this.bait;
+        if (!b || b.dead) {
+          this.bait = null; this.state = 'running'; this.chase = 0; this.repathT = 0;
+          break;
+        }
+        const db = Math.hypot(b.x - this.x, b.y - this.y);
+        if (db < 9) {
+          // chewing: too busy to notice the agent at all
+          this.eatT += dt;
+          this.vx *= 0.8; this.vy *= 0.8;
+          this.facing = faceFrom(b.x - this.x, b.y - this.y + 0.01);
+          if (Math.random() < dt * 5) game.crumbs(this);
+        } else {
+          // still sneaking over: a close agent spooks it
+          if (distP < 30) {
+            this.bait = null; this.state = 'running'; this.chase = 0; this.repathT = 0;
+            break;
+          }
+          this.seek(game, b.x, b.y, st.run * slow, st.accel, dt);
+        }
+        break;
+      }
+
+      case 'reeled': {
+        const o = this.reelTo || p;
+        const dx = o.x - this.x, dy = o.y - this.y;
+        const d = Math.hypot(dx, dy) || 1;
+        this.reelT -= dt;
+        if (d < 12 || this.reelT <= 0) { game.onReelArrive(this); break; }
+        this.vx = dx / d * 290; this.vy = dy / d * 290;
+        break;
+      }
+
+      case 'hypno': {
+        this.hypnoT -= dt;
+        if (this.hypnoT <= 0) {
+          this.state = 'running'; this.chase = -2; this.repathT = 0;
+          game.popup(this.x, this.y - 16, 'SNAPPED OUT', '#ff9e5e');
+          break;
+        }
+        if (this.hypnoWalk) {
+          this.seek(game, game.vanDoor.x, game.vanDoor.y, 78, 500, dt);
+        } else {
+          // conga line: follow the agent, or whoever is in front of it
+          const lead = this.hypnoLead || p;
+          const d = Math.hypot(lead.x - this.x, lead.y - this.y);
+          if (d > 14) this.seek(game, lead.x, lead.y, d > 40 ? 175 : 120, 700, dt);
+          else { this.vx *= 0.8; this.vy *= 0.8; }
+        }
         break;
       }
 
       case 'running': {
-        // pressure builds while the agent is close
-        if (distP < 95) this.chase += dt;
+        // Pincer: caught between the agent and a Decoy Agent on the far side,
+        // it panics and cowers for a moment. Grab it!
+        if (this.cornerCd <= 0 && distP < 72 && game.cornered(this)) {
+          this.cornerCd = 4;
+          this.stunned(1.4);
+          game.popup(this.x, this.y - 16, 'CORNERED!', '#ffb07a');
+          break;
+        }
+        // pressure builds while the agent (or a decoy) is close
+        if (distT < 95) this.chase += dt;
         else this.chase = Math.max(-3, this.chase - dt * 0.7);
 
         // find a hiding spot: far from player, reachable
         this.repathT -= dt;
         if (this.repathT <= 0) {
           this.repathT = 1.2 + Math.random() * 0.6;
-          this.pickHideTarget(game);
+          this.pickHideTarget(game, th);
         }
 
         let tx = 0, ty = 0;
@@ -332,7 +483,7 @@ export class Alien {
           }
           // arrived at the spot?
           const ds = Math.hypot(this.targetSpot.x - this.x, this.targetSpot.y - this.y);
-          if (ds < 8 && distP > 105) {
+          if (ds < 8 && distT > 105) {
             this.settleT += dt;
             if (this.settleT > 0.4) {
               this.state = 'hiding';
@@ -344,21 +495,21 @@ export class Alien {
           } else this.settleT = 0;
         } else {
           // no plan: flee vector with obstacle steering
-          const away = this.steerAway(game, distP);
+          const away = this.steerAway(game, th, distT);
           tx = away.x; ty = away.y;
         }
 
         // burst dash away when the agent gets close
-        if (st.dashPower && this.dashCd <= 0 && distP < 46) {
-          const len = Math.hypot(this.x - p.x, this.y - p.y) || 1;
-          this.vx = (this.x - p.x) / len * st.dashPower;
-          this.vy = (this.y - p.y) / len * st.dashPower;
+        if (st.dashPower && this.dashCd <= 0 && distT < 46) {
+          const len = distT || 1;
+          this.vx = (this.x - th.x) / len * st.dashPower;
+          this.vy = (this.y - th.y) / len * st.dashPower;
           this.dashCd = 2.2;
           this.zv = 90; this.z = 0.1;
           game.puff(this.x, this.y, '#cfe6ff');
         }
 
-        this.accelToward(tx, ty, distP < 130 ? st.sprint : st.run, st.accel, dt);
+        this.accelToward(tx, ty, (distT < 130 ? st.sprint : st.run) * slow, st.accel, dt);
 
         // out of options -> attack
         if (this.chase > st.chaseToAttack) {
@@ -370,25 +521,29 @@ export class Alien {
       }
 
       case 'attack': {
+        // goes for the agent, or a Decoy Agent that got in its face
         this.attackT -= dt;
-        const len = Math.hypot(p.x - this.x, p.y - this.y) || 1;
-        this.facing = faceFrom(p.x - this.x, p.y - this.y);
+        const len = distT || 1;
+        this.facing = faceFrom(th.x - this.x, th.y - this.y);
         if (st.attackType === 'bolt') {
           // keep distance and shoot
           const want = 80;
-          const dir = distP < want ? -1 : 0.4;
-          this.accelToward((p.x - this.x) * dir, (p.y - this.y) * dir, st.run, st.accel, dt);
-          if (this.boltCd <= 0 && !lineBlocked(map, this.x, this.y, p.x, p.y)) {
+          const dir = distT < want ? -1 : 0.4;
+          this.accelToward((th.x - this.x) * dir, (th.y - this.y) * dir, st.run * slow, st.accel, dt);
+          if (this.boltCd <= 0 && !lineBlocked(map, this.x, this.y, th.x, th.y)) {
             this.boltCd = 1.7;
-            game.spawnBolt(this, (p.x - this.x) / len, (p.y - this.y) / len);
+            game.spawnBolt(this, (th.x - this.x) / len, (th.y - this.y) / len);
           }
         } else {
           // tackle charge
-          this.accelToward(p.x - this.x, p.y - this.y, st.sprint * 1.25, st.accel * 1.5, dt);
-          if (distP < 11 && p.state !== 'stunned' && !p.airborne) {
+          this.accelToward(th.x - this.x, th.y - this.y, st.sprint * 1.25 * slow, st.accel * 1.5, dt);
+          if (th.isDecoy) {
+            if (distT < 11) { game.hitDecoy(th, this); this.attackT = 0; }
+          } else if (distP < 11 && p.state !== 'stunned' && !p.airborne) {
             game.playerHit(this, 0.85, (p.x - this.x) / len * 140, (p.y - this.y) / len * 140);
             this.attackT = 0;
           }
+          if (this.state !== 'attack') break;   // bounced off a shield
         }
         if (this.attackT <= 0) {
           this.state = 'running';
@@ -428,8 +583,8 @@ export class Alien {
     this.vy += Math.max(-accel * dt, Math.min(accel * dt, ty - this.vy));
   }
 
-  steerAway(game, distP) {
-    const p = game.player;
+  // p = whatever it's fleeing (the agent or a decoy), distP = how far that is
+  steerAway(game, p, distP) {
     const map = game.map;
     // sample 8 directions, prefer away from the agent and unblocked
     let best = null, bestScore = -1e9;
@@ -448,8 +603,7 @@ export class Alien {
     return best || { x: this.x - p.x, y: this.y - p.y };
   }
 
-  pickHideTarget(game) {
-    const p = game.player;
+  pickHideTarget(game, p = game.player) {
     let best = null, bestScore = -1e9;
     for (const s of game.hideSpots) {
       if (game.spotOccupied(s, this)) continue;

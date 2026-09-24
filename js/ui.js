@@ -378,7 +378,10 @@ export class UI {
         `<div class="intel-top"><span class="gear-ico small${locked ? ' locked' : ''}">${g.icon}</span>` +
         `<div><b>${g.name.toUpperCase()}</b></div>` +
         `<button class="intel-x" aria-label="Close">&times;</button></div>` +
-        `<p>${g.desc.toUpperCase()}</p>`;
+        `<p>${g.desc.toUpperCase()}</p>` +
+        `<ul class="gear-tiers">${g.levels.map((l, i) =>
+          `<li class="${i < (save.gear[id] || 0) ? 'on' : ''}"><b>MK.${'I'.repeat(i + 1)}</b>` +
+          `${l.label.replace(/^Mk\.I+\s*(\u2014\s*)?/, '').toUpperCase()}</li>`).join('')}</ul>`;
       pop.querySelector('.intel-x').addEventListener('click', (ev) => { ev.stopPropagation(); close(); sfx.click(); });
       wrap.appendChild(pop);
       const pr = wrap.getBoundingClientRect(), cr = card.getBoundingClientRect();
