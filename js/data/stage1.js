@@ -11,6 +11,14 @@
 //      over it (the barn roof lifts off when you walk in). Secure 6 and the
 //      rest run for the tree line; the agent jumps, fumes, follows them in,
 //      and the scene ends.
+//   4. Scene 3, Highway 29. Thick woods, heading east, and they don't end:
+//      the 6 keep slipping further along from hiding place to hiding place,
+//      and the van follows on a fire road. Secure 3 and the woods run out:
+//      the other 3 bolt, leap a creek (the agent has to jump it), and lead
+//      him on a chase they're always just too fast for. At Highway 29 they
+//      turn and stun him with a shock gun, cross to a gas station and stow
+//      away in an armoured black semi; its driver never notices and drives
+//      off. The agent crawls after it, then puts his head down. Fade out.
 //
 // There is no money, shop or upgrade anywhere in this stage: base kit only,
 // nothing to buy, no payout. All the words live here so they're easy to edit.
@@ -44,7 +52,12 @@ export const STAGE1 = {
     {
       num: 2, name: 'Barnyard', map: 'barnyard', aliens: { grunt: 12 }, goal: 6,
       fled: 'Ran for the tree line',
-      outro: 'TO BE CONTINUED<br>The rest of them vanished into the tree line.<br>Scene 3 is on its way.',
+      outro: 'The rest of them vanished into the tree line.<br>Scene 3 picks up in the woods.',
+    },
+    {
+      num: 3, name: 'Highway 29', map: 'highway29', aliens: { grunt: 6 }, goal: 3,
+      fled: 'Got away in the semi',
+      outro: 'TO BE CONTINUED<br>The last three are somewhere down Highway 29<br>in the back of a black semi.<br>Scene 4 is on its way.',
     },
   ],
 };
@@ -151,4 +164,31 @@ export const RADIO2 = {
 
 export const OBJECTIVES2 = {
   secure: 'SECURE 6 ALIENS',
+};
+
+/* ---------------- Scene 3 (Highway 29) script ---------------- */
+// No radio this time: the agent is on his own out here.
+
+export const OBJECTIVES3 = {
+  secure: 'SECURE 3 ALIENS',
+  follow: 'AFTER THEM!',
+  creek: 'JUMP THE CREEK',
+  chase: 'CATCH THEM!',
+};
+
+export const HINTS3 = {
+  creek: {
+    buttons: "TAP JUMP AT THE WATER'S EDGE", gestures: "SWIPE UP AT THE WATER'S EDGE",
+    keys: "SPACE AT THE WATER'S EDGE", pad: "PRESS Y AT THE WATER'S EDGE",
+  },
+  // after a dunking: a run-up clears it easily
+  runup: {
+    buttons: 'SPRINT AT IT, THEN TAP JUMP', gestures: 'PUSH PAST THE RING, THEN SWIPE UP',
+    keys: 'HOLD SHIFT, THEN SPACE AT THE EDGE', pad: 'HOLD A TRIGGER, THEN Y AT THE EDGE',
+  },
+};
+
+export const GLOW3 = {
+  buttons: { creek: 'btn-jump', runup: 'btn-sprint' },
+  gestures: { creek: 'hint-jump', runup: 'hint-sprint' },
 };

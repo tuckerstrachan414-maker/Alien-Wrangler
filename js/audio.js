@@ -130,4 +130,23 @@ export const sfx = {
   stomp:   () => { tone(70, 0.14, 'triangle', 0.18, -30); noise(0.09, 0.12, 0, 0, 900); },
   grumble: () => { [190, 160, 130, 150].forEach((f, i) => tone(f + Math.random() * 20, 0.08, 'square', 0.05, -30, i * 0.09)); noise(0.3, 0.03, 0.05, 300, 1500); },
   sceneClear: () => { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, 0.16, 'square', 0.08, 0, i * 0.11)); },
+  // ---- Highway 29 ----
+  // missing the jump: into the creek, then the bubbles
+  splash:  () => { noise(0.4, 0.22, 0, 0, 1600); noise(0.12, 0.1, 0, 2400); [0.12, 0.2, 0.3].forEach(d => tone(500 + Math.random() * 300, 0.06, 'sine', 0.05, 400, d)); },
+  // the shock gun: a rising whine as it charges, then the crack and buzz
+  charge:  () => { tone(320, 0.5, 'sine', 0.05, 1500); tone(640, 0.5, 'square', 0.02, 2600, 0.05); },
+  shock:   () => { noise(0.08, 0.3, 0, 2000); noise(0.7, 0.14, 0.03, 1200, 6000); tone(110, 0.7, 'sawtooth', 0.12, -30); tone(55, 0.8, 'square', 0.06, 20, 0.05); },
+  crackle: () => { noise(0.04, 0.05 + Math.random() * 0.04, 0, 2500); },
+  // somebody hopping into the back of a truck, its doors slamming
+  clonk:   () => { tone(120, 0.1, 'triangle', 0.1, -40); noise(0.06, 0.06, 0, 300, 2000); },
+  slam:    () => { tone(80, 0.18, 'triangle', 0.2, -30); noise(0.12, 0.18, 0, 200, 2400); },
+  whistle: () => { tone(1320, 0.14, 'sine', 0.04, 60); tone(1760, 0.2, 'sine', 0.04, -80, 0.16); },
+  // the semi: the engine turning over, then pulling away
+  engine:  () => { [0, 0.16, 0.3].forEach(d => noise(0.1, 0.12, d, 0, 500)); tone(42, 1.1, 'sawtooth', 0.09, 16, 0.4); noise(1.1, 0.06, 0.4, 0, 300); },
+  driveOff: () => { tone(46, 2.4, 'sawtooth', 0.09, 70); noise(2.4, 0.07, 0, 0, 400); tone(92, 2.2, 'square', 0.025, 90, 0.2); },
+  // a car going by on the highway
+  whoosh:  () => { noise(0.7, 0.14, 0, 400, 3000); tone(300, 0.6, 'sawtooth', 0.03, -180); },
+  // the agent dragging himself along, and giving up
+  scrape:  () => noise(0.16, 0.05, 0, 200, 1400),
+  sigh:    () => { tone(330, 0.4, 'triangle', 0.07, -60); tone(247, 0.7, 'triangle', 0.07, -70, 0.35); },
 };

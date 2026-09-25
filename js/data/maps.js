@@ -4,12 +4,15 @@ import {
   strawScatter, mudPatch, footprints, floorTool, spilledBucket, grainSpill, brokenBoards, eggClutch, brokenPot,
 } from './barnyardArt.js';
 import { paintPath } from '../terrain.js';
+import { buildHighwayProps } from './highwayArt.js';
+import { HighwayStrip, CW, NP, TH } from './highwayStrip.js';
 
 // A map = ground tile grid + props (with solids & hide spots) + van + player spawn.
 // World units are pixels; tiles are 16px.
 
 const PROPS = buildProps();
 const YARD = buildBarnyardProps();
+const HWY = buildHighwayProps();
 
 class MapBuilder {
   constructor(name, tw, th, baseTile) {
@@ -65,6 +68,7 @@ class MapBuilder {
   // lookup — used for map-specific PNG-backed props (e.g. Maple Street).
   customProp(def, x, y, opts = {}, key = null) {
     const pr = { key, x, y, img: def.img, tall: def.tall, baseY: y + def.img.height };
+    if (opts.see) pr.see = true;          // crown thins out while the agent is under it
     this.props.push(pr);
     if (def.solid && !opts.noSolid) {
       this.solids.push({ x: x + def.solid.x, y: y + def.solid.y, w: def.solid.w, h: def.solid.h, jumpable: def.jumpable });
@@ -136,7 +140,8 @@ class MapBuilder {
   placeVan(x, y) {
     this.van = { x, y };
     // van body blocks; deposit zone handled in game.js by radius from door
-    this.solids.push({ x: x + 1, y: y + 6, w: 40, h: 20, jumpable: false });
+    this.vanSolid = { x: x + 1, y: y + 6, w: 40, h: 20, jumpable: false };
+    this.solids.push(this.vanSolid);
     return this;
   }
 
@@ -822,6 +827,26 @@ export function buildBarnyard() {
   return m.done();
 }
 
+/* ------------------------- HIGHWAY 29 (Stage 1, Scene 3) ------------------------- */
+// The woods the last of them ran into, heading east: thick with trees,
+// bushes, boulders and mossy logs, a fire road along the south edge the van
+// can follow, and no end to them until the director says so. Past them a
+// creek, open woods, and Highway 29 with a gas station on the far side. The
+// woods stream in a piece at a time as the agent pushes on (highwayStrip.js
+// does the laying out and painting; the director decides what comes next).
+export function buildHighway29() {
+  const m = new MapBuilder('Highway 29', NP * CW / TILE, TH, T.WOODS);
+  m.blend = true;
+  const strip = new HighwayStrip(m, PROPS, HWY);
+  m.strip = strip;
+  strip.init();
+  m.paintGround = (g, tiles) => strip.paintGround(g, tiles);
+  m.placeVan(150, Math.round(strip.trackY(173)) - 20);
+  m.van.flip = true;                          // nose east, the way they're headed
+  m.spawn = { x: 130, y: 232 };
+  return m.done();
+}
+
 export const MAP_BUILDERS = {
   playground: buildPlayground,
   farmhouse: buildFarmhouse,
@@ -830,4 +855,5 @@ export const MAP_BUILDERS = {
   tropical: buildTropical,
   farmfields: buildFarmFields,
   barnyard: buildBarnyard,
+  highway29: buildHighway29,
 };

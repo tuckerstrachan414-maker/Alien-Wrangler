@@ -389,6 +389,9 @@ export const T = {
   FOREST: 28, ROAD_DIRT: 29, MEADOW: 30, ROAD_DIRT2: 31,
   // Stage 1 barnyard: the barn's packed-earth floor, the greenhouse pavers
   BARN_FLOOR: 32, GH_FLOOR: 33,
+  // Stage 1 Highway 29: the floor of the woods (leaf litter over moss), and
+  // the grass of a glade in them (softer than farm grass; the second has flowers)
+  WOODS: 34, WOODS2: 35, GLADE: 36, GLADE2: 37,
 };
 
 /* ---- Stage 1 crop tiles ----
@@ -627,6 +630,39 @@ export function buildTiles() {
       for (let bx = off; bx < TILE; bx += 8) ctx.fillRect(bx, y, 1, 4);
     }
     return c;
+  })();
+
+  // ---- Stage 1 Highway 29 ----
+  // floor of the woods: moss and old leaf litter, a few fallen leaves on top;
+  // the second one mossier, mixed in so the floor never repeats
+  const woods = (seed, moss) => {
+    const t = speckleTile('#4d6033', ['#435630', '#58693a', '#665a36', '#6f6038', '#3a4b29'], seed, 30);
+    const x = t.getContext('2d');
+    const rnd = mulberry(seed + 5);
+    for (let i = 0; i < moss; i++) {
+      const mx = Math.floor(rnd() * 14), my = Math.floor(rnd() * 15);
+      x.fillStyle = '#56733a'; x.fillRect(mx, my, 3, 1);
+      x.fillStyle = '#638240'; x.fillRect(mx + 1, my, 1, 1);
+    }
+    for (let i = 0; i < 3; i++) {                          // a fallen leaf and its shadow
+      const lx = 1 + Math.floor(rnd() * 13), ly = 1 + Math.floor(rnd() * 13);
+      x.fillStyle = '#3a3a22'; x.fillRect(lx, ly + 1, 2, 1);
+      x.fillStyle = ['#8a5a2c', '#9a7a3a', '#7a4a26'][i]; x.fillRect(lx, ly, 2, 1);
+    }
+    return t;
+  };
+  tiles[T.WOODS] = woods(281, 2);
+  tiles[T.WOODS2] = woods(291, 6);
+  tiles[T.GLADE] = speckleTile('#5b7836', ['#526e31', '#65843c', '#6e8c42', '#5e6a36'], 301, 16);
+  tiles[T.GLADE2] = (() => {
+    const t = speckleTile('#5b7836', ['#526e31', '#65843c', '#6e8c42'], 311, 14);
+    const x = t.getContext('2d');
+    const rnd = mulberry(313);
+    for (const col of ['#e8e2c8', '#d8c46a', '#e8e2c8']) {
+      x.fillStyle = col;
+      x.fillRect(1 + Math.floor(rnd() * 14), 1 + Math.floor(rnd() * 14), 1, 1);
+    }
+    return t;
   })();
 
   // Placeholders for the Maple Street PNG road tiles — overwritten in main.js
@@ -1358,7 +1394,7 @@ export function buildProps() {
 /* ============================ STAGE 1 BUILDERS ============================ */
 
 // Filled pixel disc (no anti-aliasing), for canopies and craters.
-function disc(ctx, cx, cy, r, col) {
+export function disc(ctx, cx, cy, r, col) {
   ctx.fillStyle = col;
   for (let dy = -r; dy <= r; dy++) {
     const half = Math.floor(Math.sqrt(r * r - dy * dy) + 0.35);

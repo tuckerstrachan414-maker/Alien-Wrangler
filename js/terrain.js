@@ -27,13 +27,17 @@ export const TERRAIN = {
   [T.GRASS]: { group: 'grass', pri: 2 },
   [T.GRASS2]: { group: 'grass', pri: 2 },
   [T.MEADOW]: { group: 'grass', pri: 2 },
+  [T.GLADE]: { group: 'grass', pri: 2 },
+  [T.GLADE2]: { group: 'grass', pri: 2 },
+  [T.WOODS]: { group: 'woods', pri: 2.5 },
+  [T.WOODS2]: { group: 'woods', pri: 2.5 },
   [T.FOREST]: { group: 'forest', pri: 3 },
 };
 
 // 4x4 ordered-dither thresholds
 const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
 
-function hash(x, y) {
+export function hash(x, y) {
   let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263)) | 0;
   h = Math.imul(h ^ (h >>> 13), 1274126177);
   h ^= h >>> 16;
@@ -41,7 +45,7 @@ function hash(x, y) {
 }
 
 // smooth value noise in [0, 1]
-function noise(x, y) {
+export function noise(x, y) {
   const xi = Math.floor(x), yi = Math.floor(y);
   const xf = x - xi, yf = y - yi;
   const u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
@@ -61,7 +65,7 @@ function edgeDist(dx, dy, px, py) {
 
 // Pixel data of a 16x16 tile texture, cached per tile set.
 const TEX_CACHE = new WeakMap();
-function texOf(tiles, id) {
+export function texOf(tiles, id) {
   let cache = TEX_CACHE.get(tiles);
   if (!cache) TEX_CACHE.set(tiles, cache = new Map());
   let d = cache.get(id);
@@ -77,17 +81,21 @@ function texOf(tiles, id) {
 }
 
 // Re-paint the borders of an already tile-drawn ground canvas.
-export function blendGround(ctx, map, tiles, table = TERRAIN) {
+// `tx0`..`tx1` limits it to a band of tile columns, and `ox` is how far along
+// a longer world the canvas's left edge sits, for the noise: Highway 29
+// streams its woods in a piece at a time, and a piece painted later has to
+// meet the one beside it without a seam.
+export function blendGround(ctx, map, tiles, table = TERRAIN, { tx0 = 0, tx1 = map.tw, ox = 0 } = {}) {
   const { tw, th, ground } = map;
-  const W = tw * TILE, H = th * TILE;
-  const img = ctx.getImageData(0, 0, W, H);
+  const X0 = tx0 * TILE, W = (tx1 - tx0) * TILE, H = th * TILE;
+  const img = ctx.getImageData(X0, 0, W, H);
   const out = img.data;
   const tex = (id) => texOf(tiles, id);
   // off-map neighbours repeat the edge tile, so the map border never blends
   const idAt = (x, y) => ground[Math.max(0, Math.min(th - 1, y)) * tw + Math.max(0, Math.min(tw - 1, x))];
 
   for (let ty = 0; ty < th; ty++) {
-    for (let tx = 0; tx < tw; tx++) {
+    for (let tx = tx0; tx < tx1; tx++) {
       const me = table[ground[ty * tw + tx]];
       if (!me) continue;
       // higher-priority neighbours, grouped (a group's texture comes from
@@ -113,11 +121,11 @@ export function blendGround(ctx, map, tiles, table = TERRAIN) {
       for (let py = 0; py < TILE; py++) {
         const wy = ty * TILE + py;
         for (let px = 0; px < TILE; px++) {
-          const wx = tx * TILE + px;
+          const wx = tx * TILE + px, nx = wx + ox;
           // bleed depth: 1..8px, wandering along the border; solid up to a
           // wavy line, then a thin dithered fringe
-          const depth = 1 + 7 * noise(wx * 0.11, wy * 0.11);
-          const thr = BAYER[(wy & 3) * 4 + (wx & 3)];
+          const depth = 1 + 7 * noise(nx * 0.11, wy * 0.11);
+          const thr = BAYER[(wy & 3) * 4 + (nx & 3)];
           let pick = null;
           for (const g of groups) {
             let cov = 0;
@@ -125,24 +133,27 @@ export function blendGround(ctx, map, tiles, table = TERRAIN) {
             if (cov > thr) pick = g;           // later groups outrank earlier ones
           }
           if (!pick) continue;
-          const si = (py * TILE + px) * 4, di = (wy * W + wx) * 4;
+          const si = (py * TILE + px) * 4, di = (wy * W + wx - X0) * 4;
           out[di] = pick.tex[si]; out[di + 1] = pick.tex[si + 1]; out[di + 2] = pick.tex[si + 2];
         }
       }
     }
   }
-  ctx.putImageData(img, 0, 0);
+  ctx.putImageData(img, X0, 0);
 }
 
 // Paint a smooth road along a polyline straight into the ground canvas: the
 // texture of `texIds` (mixed per tile so no pattern repeats), a wobbly
 // dithered edge, a darker packed shoulder and two faint wheel ruts. Used
 // instead of road tiles, which can only turn in 16px stair steps.
-export function paintPath(ctx, tiles, pts, { halfW = 22, texIds, rut = 8 } = {}) {
+// `clip` = [x0, x1) keeps it to those canvas columns and `ox` offsets the
+// noise, the same as blendGround's, for a map that paints in pieces.
+export function paintPath(ctx, tiles, pts, { halfW = 22, texIds, rut = 8, ox = 0, clip = null } = {}) {
   const W = ctx.canvas.width, H = ctx.canvas.height;
   const pad = halfW + 6;
   const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
-  const bx0 = Math.max(0, Math.floor(Math.min(...xs) - pad)), bx1 = Math.min(W, Math.ceil(Math.max(...xs) + pad));
+  let bx0 = Math.max(0, Math.floor(Math.min(...xs) - pad)), bx1 = Math.min(W, Math.ceil(Math.max(...xs) + pad));
+  if (clip) { bx0 = Math.max(bx0, clip[0]); bx1 = Math.min(bx1, clip[1]); }
   const by0 = Math.max(0, Math.floor(Math.min(...ys) - pad)), by1 = Math.min(H, Math.ceil(Math.max(...ys) + pad));
   if (bx1 <= bx0 || by1 <= by0) return;
   const bw = bx1 - bx0, bh = by1 - by0;
@@ -153,15 +164,15 @@ export function paintPath(ctx, tiles, pts, { halfW = 22, texIds, rut = 8 } = {})
   for (let y = 0; y < bh; y++) {
     const wy = by0 + y;
     for (let x = 0; x < bw; x++) {
-      const wx = bx0 + x;
+      const cx = bx0 + x, wx = cx + ox;
       // nearest point on the polyline, and which side of it we're on
       let best = 1e9, side = 0;
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], b = pts[i + 1];
         const dx = b.x - a.x, dy = b.y - a.y;
         const len2 = dx * dx + dy * dy || 1;
-        const t = Math.max(0, Math.min(1, ((wx + 0.5 - a.x) * dx + (wy + 0.5 - a.y) * dy) / len2));
-        const ex = wx + 0.5 - (a.x + dx * t), ey = wy + 0.5 - (a.y + dy * t);
+        const t = Math.max(0, Math.min(1, ((cx + 0.5 - a.x) * dx + (wy + 0.5 - a.y) * dy) / len2));
+        const ex = cx + 0.5 - (a.x + dx * t), ey = wy + 0.5 - (a.y + dy * t);
         const d = Math.hypot(ex, ey);
         if (d < best) { best = d; side = (dx * ey - dy * ex) / Math.sqrt(len2); }
       }
