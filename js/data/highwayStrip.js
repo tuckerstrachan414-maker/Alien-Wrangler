@@ -38,7 +38,7 @@ export const FN = 56;                   // canopy along the north edge, above th
 export const FS = 404;                  // ...and the south, below this
 export const THK = 64;                  // thicket down the canvas's left edge
 export const FINAL_W = 3;               // pieces Highway 29 + the station take up
-const SLICE = 64;                       // streamed-in ground is painted this many columns a frame
+const SLICE = 32;                       // streamed-in ground is painted this many columns a frame
 const HUNT0 = 84, HUNT1 = 342;          // tree bases stay between these
 const TRACK_Y = 380;                    // the fire road's middle
 export const CREEK_HW = 17;             // half the creek's width
@@ -144,7 +144,7 @@ export class HighwayStrip {
       if (lx >= ROAD.asphalt1 && lx < ROAD.lot0) return T.GRAVEL;
       if (this.canopyAt(wx, y)) return T.FOREST;
       if (lx >= ROAD.lot0 && lx < ROAD.lot1 && y >= ROAD.lotY0 && y < ROAD.lotY1) return T.CONCRETE;
-      if (lx < 60) return n < 0.45 ? woods : grass;
+      if (lx < 60 + 20 * (n - 0.5)) return n < 0.45 ? woods : grass;
       if (lx < ROAD.verge) return T.GRASS2;
       return grass;
     }

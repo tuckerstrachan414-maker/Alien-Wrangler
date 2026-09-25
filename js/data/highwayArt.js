@@ -11,7 +11,7 @@
 // and grille.
 import { C, T, canvas, makeSprite, flipX, mulberry, disc } from './sprites.js';
 import { pixelText } from './storyArt.js';
-import { hash } from '../terrain.js';
+import { hash, noise } from '../terrain.js';
 
 function art(w, h, draw) {
   const [c, ctx] = canvas(w, h);
@@ -762,9 +762,13 @@ export function roadPixel(out, di, lx, wy, tex, n, t) {
     return true;
   }
   if (lx >= R.lot0 && lx < R.lot1 && wy >= R.lotY0 && wy < R.lotY1) {
-    from(T.CONCRETE);
-    if ((lx - R.lot0) % 40 === 0 || (wy - R.lotY0) % 40 === 0) set(118, 124, 132);   // expansion joints
-    if (n < 0.2 && dither(lx, wy) < 0.6) set(96, 100, 106);                            // oil stains
+    // poured concrete: a soft mottle, a few flecks, joints in big slabs
+    const m = noise(lx * 0.05 + 3, wy * 0.05);
+    const v = 152 + (m - 0.5) * 16 + (t > 0.93 ? -7 : 0);
+    set(v, v + 3, v + 9);
+    if (t > 0.985) set(126, 130, 138);
+    if ((lx - R.lot0) % 56 === 0 || (wy - R.lotY0) % 56 === 0) set(122, 127, 136);    // expansion joints
+    if (noise(lx * 0.09 + 7, wy * 0.09) < 0.16 && dither(lx, wy) < 0.55) set(112, 116, 124);   // oil stains
     return true;
   }
   return false;

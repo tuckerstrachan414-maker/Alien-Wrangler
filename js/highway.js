@@ -37,7 +37,7 @@ const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 const AHEAD = 380;          // how far ahead of the agent they'll go to ground
-const CHASE_T = 15;         // seconds of chase before they reach the highway
+const CHASE_T = 14.3;       // aim for this; they reach the highway at about 15s
 const LEADS = [54, 70, 88]; // how far in front of him each one keeps
 
 // A little pixel glyph with an ink outline ('#' = pixel), top-left at (x, y).
@@ -402,12 +402,13 @@ export class HighwayScene extends StoryDirector {
     if (cs.phase === 'bolt') {
       // over to where they're running, then back to him
       const on = this.runners.filter(a => a.popped);
-      if (cs.t > 0.9 && on.length) {
+      if (cs.t > 0.7 && on.length) {
         const cx = on.reduce((s, a) => s + a.x, 0) / on.length;
-        g.camTarget = { x: Math.min(cx, p.x + this.viewW() * 0.42), y: p.y };
-        g.camEase = 0.06;
+        const cy = on.reduce((s, a) => s + a.y, 0) / on.length;
+        g.camTarget = { x: Math.min(cx, p.x + Math.max(220, this.viewW() * 0.42)), y: (p.y + cy) / 2 };
+        g.camEase = 0.05;
       }
-      if (cs.t > 2.4) {
+      if (cs.t > 2.9) {
         cs.phase = 'startle'; cs.pt = 0;
         g.camTarget = { x: p.x, y: p.y };
         g.camEase = 0.03;
@@ -638,9 +639,11 @@ export class HighwayScene extends StoryDirector {
       if (s.speed < 14 && a.z === 0 && Math.random() < dt * 1.5) { a.zv = rand(70, 100); a.z = 0.1; }
     });
     this.updateRunners(dt);
-    // at the highway: all three pulled up on the verge, and him close enough
+    // at the highway: the first of them pulls up on the verge (the rest right
+    // behind), with him close enough to see, and they turn on him
     const near = this.runners.some(a => Math.hypot(a.x - p.x, a.y - p.y) < 200);
-    if (this.final && arrived >= this.runners.length && near) this.startShot();
+    const bunched = this.runners.every(a => a.x > stop - 40);
+    if (this.final && arrived && bunched && near) this.startShot();
   }
 
   /* ---------------- the shock gun ---------------- */
@@ -739,21 +742,27 @@ export class HighwayScene extends StoryDirector {
   updateFinale(dt) {
     const g = this.game, p = g.player, cs = this.cs;
     cs.t += dt; cs.pt += dt;
-    // crackling, on and off
+    // electricity all over him to begin with; after, the odd spark
     cs.crackT -= dt;
-    if (this.pose && cs.crackT <= 0) {
-      const strong = cs.phase === 'down' || cs.phase === 'cross';
-      cs.crackT = strong ? rand(0.05, 0.12) : rand(0.4, 1.2);
-      this.cracks = strong || Math.random() < 0.5 ? 3 : 1;
+    if (cs.phase === 'down' || cs.phase === 'cross') {
+      this.cracks = Math.random() < 0.5 ? 3 : 2;
+      this.crackLife = 0.1;
+      if (cs.crackT <= 0) { cs.crackT = rand(0.08, 0.2); sfx.crackle(); }
+      if (Math.random() < dt * 12) {
+        g.particles.push({ x: p.x + rand(-8, 8), y: p.y - 4 + rand(-3, 3), vx: rand(-25, 25), vy: -rand(10, 30), grav: 60, life: 0.25, t: 0.25, color: Math.random() < 0.5 ? '#41f0d8' : '#ffffff', size: 1 });
+      }
+    } else if (this.pose && cs.crackT <= 0) {
+      cs.crackT = rand(0.5, 1.3);
+      this.cracks = 1;
       this.crackLife = 0.08;
-      if (Math.random() < (strong ? 0.5 : 0.8)) sfx.crackle();
+      sfx.crackle();
     }
     this.crackLife = Math.max(0, (this.crackLife || 0) - dt);
     const semi = this.semiPos();
 
     if (cs.phase === 'down') {
       // on him: flat out, lit up
-      if (cs.pt > 2.0) {
+      if (cs.pt > 1.8) {
         cs.phase = 'cross'; cs.pt = 0;
         // over the road to the back of the semi
         this.runners.forEach((a, i) => {
@@ -778,7 +787,7 @@ export class HighwayScene extends StoryDirector {
       for (const a of this.runners) {
         if (a.state === 'fled') { inside++; continue; }
         const b = a.board;
-        if (!b.jumping && Math.hypot(a.x - b.at.x, a.y - b.at.y) < 4) {
+        if (!b.jumping && Math.hypot(a.x - b.at.x, a.y - b.at.y) < 10) {
           b.delay -= dt;
           if (b.delay <= 0) {
             // leap in the back
@@ -798,7 +807,7 @@ export class HighwayScene extends StoryDirector {
         if (!cs.shutAt) cs.shutAt = cs.t + 0.45;
         if (cs.t > cs.shutAt && this.semiDoors === 'open') this.semiDoors = 'half';
         if (cs.t > cs.shutAt + 0.12 && this.semiDoors === 'half') { this.semiDoors = 'closed'; sfx.slam(); g.shake = 1.5; }
-        if (cs.t > cs.shutAt + 1.0) {
+        if (cs.t > cs.shutAt + 0.8) {
           cs.phase = 'driver'; cs.pt = 0;
           const d = this.storeDoor();
           this.driver = { x: d.x + d.w / 2, y: d.y + d.h - 6, walkT: 0, face: 'down', path: null, i: 0, doorOpen: true, noteT: 0.3 };
@@ -828,7 +837,7 @@ export class HighwayScene extends StoryDirector {
             sfx.click();
           }
         } else {
-          const sp = 52 * dt;
+          const sp = 60 * dt;
           d.x += dx / dist * Math.min(sp, dist); d.y += dy / dist * Math.min(sp, dist);
           d.face = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
           d.walkT += dt * 7;
@@ -876,7 +885,7 @@ export class HighwayScene extends StoryDirector {
       // back to him
       g.camTarget = { x: p.x, y: p.y - 6 };
       g.camEase = 0.02;
-      if (cs.pt > 1.9) { cs.phase = 'crawl'; cs.pt = 0; this.pose = 'crawlA'; cs.stroke = 0; }
+      if (cs.pt > 1.6) { cs.phase = 'crawl'; cs.pt = 0; this.pose = 'crawlA'; cs.stroke = 0; }
     } else if (cs.phase === 'crawl') {
       // drags himself a little way after it
       const stroke = Math.floor(cs.pt / 0.5);
@@ -885,6 +894,7 @@ export class HighwayScene extends StoryDirector {
         this.pose = stroke % 2 ? 'crawlB' : 'crawlA';
         p.x += 2;
         sfx.scrape();
+        g.puff(p.x - 7, p.y - 1, '#8a6a45');
       }
       if (cs.pt > 2.4) { cs.phase = 'defeat'; cs.pt = 0; this.pose = 'headDown'; g.puff(p.x + 6, p.y - 2, '#8a6a45'); sfx.sigh(); }
     } else if (cs.phase === 'defeat') {
@@ -1075,6 +1085,19 @@ export class HighwayScene extends StoryDirector {
     if (this.bolt) {
       const b = this.bolt;
       for (let i = 0; i < 2; i++) arc(ctx, b.x0 - camX, b.y0 - camY, b.x1 - camX, b.y1 - camY, i ? '#41f0d8' : '#9ff5ff', '#ffffff');
+    }
+    // giving up: a little '...' over him, a dot at a time
+    if (this.step === 'finale' && cs && (cs.phase === 'defeat' || cs.phase === 'fade')) {
+      const dots = cs.phase === 'fade' ? 3 : Math.min(3, Math.floor(Math.max(0, cs.pt - 0.35) / 0.3));
+      if (dots > 0) {
+        const bx = Math.round(p.x + 2 - camX), by = Math.round(p.y - 24 - camY);
+        ctx.fillStyle = '#14141e';
+        ctx.fillRect(bx, by, 15, 8); ctx.fillRect(bx + 1, by - 1, 13, 10); ctx.fillRect(bx + 2, by + 9, 3, 2);
+        ctx.fillStyle = '#eef1f7';
+        ctx.fillRect(bx + 1, by, 13, 8); ctx.fillRect(bx + 2, by + 8, 2, 1);
+        ctx.fillStyle = '#14141e';
+        for (let i = 0; i < dots; i++) ctx.fillRect(bx + 3 + i * 4, by + 4, 2, 2);
+      }
     }
     for (const n of this.notes) {
       ctx.globalAlpha = Math.max(0, 1 - n.t / 1.2);
