@@ -113,14 +113,14 @@ export function overlapsJumpable(map, x, y, r) {
 }
 
 export function lineBlocked(map, x0, y0, x1, y1) {
-  // sample every 8px; jumpable solids don't block sight
+  // sample every 8px; jumpable solids and glass walls don't block sight
   const dx = x1 - x0, dy = y1 - y0;
   const dist = Math.hypot(dx, dy);
   const steps = Math.max(1, Math.floor(dist / 8));
   for (let i = 1; i < steps; i++) {
     const px = x0 + dx * i / steps, py = y0 + dy * i / steps;
     for (const s of map.solids) {
-      if (s.jumpable) continue;
+      if (s.jumpable || s.glass) continue;
       if (px >= s.x && px <= s.x + s.w && py >= s.y && py <= s.y + s.h) return true;
     }
   }

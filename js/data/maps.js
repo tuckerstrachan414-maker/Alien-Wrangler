@@ -1,10 +1,15 @@
 import { T, TILE, buildProps, cropRow, paintForest, scorchDecal, mulberry } from './sprites.js';
+import {
+  barnArt, nestWall, greenhouseArt, greenhouseBackWall, buildBarnyardProps,
+  strawScatter, mudPatch, footprints, floorTool, spilledBucket, grainSpill, brokenBoards, eggClutch, brokenPot,
+} from './barnyardArt.js';
 import { paintPath } from '../terrain.js';
 
 // A map = ground tile grid + props (with solids & hide spots) + van + player spawn.
 // World units are pixels; tiles are 16px.
 
 const PROPS = buildProps();
+const YARD = buildBarnyardProps();
 
 class MapBuilder {
   constructor(name, tw, th, baseTile) {
@@ -22,6 +27,7 @@ class MapBuilder {
     this.smoke = [];        // [{x,y}] thin smoke columns (crashed pods)
     this.blend = false;     // soft dithered edges between ground textures (terrain.js)
     this.paintGround = null; // (ctx, tiles) => extra art baked into the ground canvas
+    this.buildings = [];    // walk-in buildings: the roof fades while the agent is inside
     this.van = { x: 60, y: 60 };
     this.spawn = { x: 80, y: 80 };
     // world border walls
@@ -96,6 +102,35 @@ class MapBuilder {
   fenceRowV(x, y, count) {
     for (let i = 0; i < count; i++) this.prop('fenceV', x, y + i * 16);
     return this;
+  }
+
+  // A walk-in building on a tile-aligned footprint (x, y, w, d in px). Its
+  // walls run `t` thick round the outside edge of the footprint, broken by
+  // doors = { n, s, e, w: [a, b) } (local px along that side), so the nav
+  // grid sees solid wall cells with open doorway cells. `art` is the
+  // { shell, cut, ox, oy } pair from barnyardArt.js; `floor` fills the
+  // inside with a ground tile. Glass walls stop bodies but not eyes.
+  building(x, y, w, d, { t, doors = {}, art, floor, glass = false, insideAlpha = 0, behindAlpha = 0.4 }) {
+    const wall = (sx, sy, sw, sh) => this.solids.push({ x: sx, y: sy, w: sw, h: sh, jumpable: false, glass });
+    const run = (side, len, place) => {
+      const gap = doors[side];
+      if (!gap) { place(0, len); return; }
+      if (gap[0] > 0) place(0, gap[0]);
+      if (gap[1] < len) place(gap[1], len);
+    };
+    run('n', w, (a, b) => wall(x + a, y, b - a, t));
+    run('s', w, (a, b) => wall(x + a, y + d - t, b - a, t));
+    run('w', d, (a, b) => wall(x, y + a, t, b - a));
+    run('e', d, (a, b) => wall(x + w - t, y + a, t, b - a));
+    if (floor !== undefined) this.fill(floor, x / TILE, y / TILE, w / TILE, d / TILE);
+    const b = {
+      x0: x, y0: y, x1: x + w, y1: y + d, baseY: y + d, t,
+      shell: art.shell, cut: art.cut, ax: x + art.ox, ay: y + art.oy,
+      topAt: (wx) => y + art.top(wx - x),     // roof's top edge on screen at world x
+      alpha: 1, insideAlpha, behindAlpha, glass, force: null,
+    };
+    this.buildings.push(b);
+    return b;
   }
 
   placeVan(x, y) {
@@ -595,6 +630,198 @@ export function buildFarmFields() {
   return m.done();
 }
 
+/* ------------------------- BARNYARD (Stage 1, Scene 2) ------------------------- */
+// Where the dirt road out of the fields leads: a big red barn at the side of
+// the road, a glass greenhouse across from it, a stone well in the yard and
+// bushes scattered about, all hemmed in by forest. The north edge is the
+// deep tree line the last of the aliens make for.
+//
+// The barn and the greenhouse are walk-in buildings (MapBuilder.building):
+// their roofs fade out while the agent is inside. The barn is a wreck
+// inside: empty pens, hay and tools everywhere, mud tracked through, and
+// every nest box on the back wall emptied.
+export function buildBarnyard() {
+  const m = new MapBuilder('Barnyard', 46, 40, T.GRASS);
+  const W = m.w, H = m.h, F = 48, FN = 64;    // F: forest band, FN: the deeper north tree line
+  const rnd = mulberry(5151);
+  m.variety(T.GRASS, T.GRASS2, 0.3, 81);
+  m.variety(T.GRASS, T.MEADOW, 0.09, 82);
+  m.blend = true;
+
+  // ---- the dirt road: up from the fields (south), past the barn, then off east ----
+  const ROAD = [[360, H + 30], [360, 600], [368, 530], [384, 460], [394, 390], [398, 320], [404, 262],
+    [424, 222], [462, 196], [520, 184], [600, 180], [680, 178], [W + 40, 178]];
+  const roadX = (y) => {
+    for (let i = 0; i < 6; i++) {
+      const [x0, y0] = ROAD[i], [x1, y1] = ROAD[i + 1];
+      if (y <= y0 && y >= y1) return x0 + (x1 - x0) * (y0 - y) / (y0 - y1);
+    }
+    return ROAD[6][0];
+  };
+  const gapS = [roadX(H - F / 2) - 30, roadX(H - F / 2) + 30];
+  const gapE = [178 - 30, 178 + 30];
+  m.road = ROAD.map(([x, y]) => ({ x, y }));
+  m.roadX = roadX;
+  m.treeLine = FN;                            // aliens bolt for y < this at the end
+
+  // ---- forest round the edge; a thick tree line along the north ----
+  m.fill(T.FOREST, 0, 0, m.tw, FN / TILE).fill(T.FOREST, 0, m.th - 3, m.tw, 3);
+  m.fill(T.FOREST, 0, 0, 3, m.th).fill(T.FOREST, m.tw - 3, 0, 3, m.th);
+  for (let ty = m.th - 3; ty < m.th; ty++) {
+    for (let tx = 0; tx < m.tw; tx++) {
+      const cx = tx * TILE + TILE / 2;
+      if (cx > gapS[0] - 4 && cx < gapS[1] + 4) m.ground[ty * m.tw + tx] = T.GRASS2;
+    }
+  }
+  for (let ty = 0; ty < m.th; ty++) {
+    const cy = ty * TILE + TILE / 2;
+    if (cy < gapE[0] - 4 || cy > gapE[1] + 4) continue;
+    for (let tx = m.tw - 3; tx < m.tw; tx++) m.ground[ty * m.tw + tx] = T.GRASS2;
+  }
+  m.solids.push(
+    { x: 0, y: 0, w: W, h: FN + 4, jumpable: false },
+    { x: 0, y: 0, w: F - 2, h: H, jumpable: false },
+    { x: W - F + 2, y: 0, w: F - 2, h: gapE[0], jumpable: false },
+    { x: W - F + 2, y: gapE[1], w: F - 2, h: H - gapE[1], jumpable: false },
+    { x: 0, y: H - F + 2, w: gapS[0], h: F, jumpable: false },
+    { x: gapS[1], y: H - F + 2, w: W - gapS[1], h: F, jumpable: false },
+  );
+  const edgeTree = (cx, baseY) => {
+    const key = rnd() < 0.5 ? 'pine' : 'tree';
+    const img = PROPS[key].img;
+    m.prop(key, Math.round(cx - img.width / 2), Math.round(baseY - img.height), { noHide: true });
+  };
+  // the tree line: a ragged double row of trunks along the north edge
+  for (let x = 8; x < W - 4; x += 12 + Math.floor(rnd() * 5)) {
+    edgeTree(x + (rnd() - 0.5) * 4, FN + 2 + rnd() * 5);
+    if (rnd() < 0.55) edgeTree(x + 6 + (rnd() - 0.5) * 4, FN - 8 + rnd() * 4);
+  }
+  for (let x = 10; x < W - 4; x += 14 + Math.floor(rnd() * 4)) {
+    if (x < gapS[0] - 16 || x > gapS[1] + 16) edgeTree(x + (rnd() - 0.5) * 4, H - F + 20 + rnd() * 8);
+  }
+  for (let y = FN + 20; y < H - F + 10; y += 13 + Math.floor(rnd() * 4)) {
+    edgeTree(F - 12 + (rnd() - 0.5) * 6, y);
+    if (y < gapE[0] - 10 || y > gapE[1] + 24) edgeTree(W - F + 12 + (rnd() - 0.5) * 6, y);
+  }
+
+  // ---- the farmyard: packed dirt from the barn doors out to the road ----
+  m.fill(T.DIRT, 8, 23, 16, 5);
+  m.fill(T.DIRT, 21, 17, 3, 2);
+
+  // ---- the barn ----
+  const BX = 112, BY = 208, BW = 224, BD = 160, BT = 8, BH = 30;
+  const barnDoors = { s: [80, 128], e: [64, 96] };
+  const barn = m.building(BX, BY, BW, BD, {
+    t: BT, doors: barnDoors, floor: T.BARN_FLOOR,
+    art: barnArt({ w: BW, d: BD, H: BH, G: 28, t: BT, south: barnDoors.s, east: barnDoors.e }),
+  });
+  m.barn = barn;
+  m.customProp(nestWall(BW, BH, BT), BX, BY - BH);
+  const inBarn = (x, y) => m.hideSpots.push({ x, y, inside: true, zone: 'barn', bld: barn, rustle: '#d9b85a' });
+  // two pens along the west wall, gates hanging open
+  for (const y of [240, 272, 288, 304, 336]) m.prop('fenceV', 164, y);
+  for (const x of [120, 136, 152]) { m.prop('fenceH', x, 236); m.prop('fenceH', x, 292); }
+  m.customProp(YARD.gateOpen, 168, 256);
+  m.customProp(YARD.gateOpen, 168, 320);
+  m.customProp(YARD.haypile, 122, 250, { noHide: true }); inBarn(136, 257);
+  m.customProp(YARD.trough, 138, 272);
+  m.customProp(YARD.haypile, 124, 318, { noHide: true }); inBarn(138, 325);
+  // loose hay under the nests, sacks, the workbench, a tipped barrow, bales
+  m.customProp(YARD.haypile, 190, 222, { noHide: true }); inBarn(204, 229);
+  m.customProp(YARD.sack, 262, 216); m.customProp(YARD.sack, 274, 219);
+  m.customProp(YARD.sackTorn, 286, 226);
+  m.customProp(YARD.workbench, 306, 218, { noHide: true }); inBarn(316, 246);
+  m.customProp(YARD.wheelbarrow, 244, 286, { noHide: true }); inBarn(256, 294);
+  m.prop('hay', 304, 316, { noHide: true }); inBarn(314, 328);
+  m.prop('hay', 278, 340, { noHide: true });
+  m.prop('hay', 300, 340, { noHide: true }); inBarn(300, 351);
+
+  // ---- the greenhouse, across the road ----
+  const GX = 464, GY = 288, GW = 112, GD = 80, GT = 4;
+  const ghDoors = { s: [48, 64], n: [48, 64] };
+  const gh = m.building(GX, GY, GW, GD, {
+    t: GT, doors: ghDoors, floor: T.GH_FLOOR, glass: true, insideAlpha: 0.1, behindAlpha: 0.7,
+    art: greenhouseArt({ w: GW, d: GD, H: 22, G: 12, t: GT, south: ghDoors.s }),
+  });
+  m.greenhouse = gh;
+  m.customProp(greenhouseBackWall(GW, GT, ghDoors.n), GX, GY - 5);
+  const inGh = (x, y) => m.hideSpots.push({ x, y, inside: true, zone: 'greenhouse', bld: gh });
+  m.customProp(YARD.benchA, 470, 292, { noHide: true }); inGh(490, 310);
+  m.customProp(YARD.benchB, 530, 292, { noHide: true }); inGh(550, 310);
+  m.customProp(YARD.benchC, 470, 336, { noHide: true }); inGh(490, 346);
+  m.customProp(YARD.benchD, 530, 336, { noHide: true }); inGh(550, 346);
+  // a vegetable garden out front, a path up the middle to the door
+  m.fill(T.CABBAGE, 29, 24, 3, 3);
+  m.fill(T.CARROT, 33, 24, 3, 3);
+  m.fill(T.DIRT, 32, 23, 1, 5);
+
+  // ---- the well, bushes, hay, fences, the mailbox ----
+  // (the well and the shade trees are solid, so their hiding spot is just
+  // behind them, where a fleeing alien can actually get to)
+  m.customProp(YARD.well, 126, 398, { noHide: true });
+  m.hideSpots.push({ x: 141, y: 414, inside: false });
+  const bushes = [[66, 150], [214, 96], [322, 116], [566, 104], [644, 250], [626, 396], [440, 500],
+    [214, 520], [84, 470], [296, 552], [602, 540], [66, 300], [510, 128], [100, 540], [118, 548],
+    [252, 470], [470, 556], [520, 486], [660, 470], [632, 330], [150, 110], [400, 100]];
+  for (const [x, y] of bushes) m.prop('bush', x, y);
+  // a few lone shade trees out in the open
+  for (const [x, y] of [[606, 300], [150, 500], [548, 520], [250, 96]]) {
+    m.prop('tree', x, y, { noHide: true });
+    m.hideSpots.push({ x: x + 15, y: Math.floor((y + 26) / TILE) * TILE - 4, inside: false });   // clear of the trunk's nav cell
+  }
+  m.prop('hay', 196, 442); m.prop('hay', 560, 456); m.prop('hay', 84, 204);
+  m.fenceRowH(64, 132, 6);                   // pasture rails between the barn and the trees
+  m.fenceRowH(430, 128, 5);
+  m.fenceRowV(330, 464, 5);                  // along the road, south of the yard
+  m.prop('mailbox', 428, 390);
+
+  m.paintGround = (g, tiles) => {
+    paintPath(g, tiles, ROAD.map(([x, y]) => ({ x, y })), { halfW: 22, texIds: [T.ROAD_DIRT, T.ROAD_DIRT2] });
+    paintForest(g, 0, 0, W, FN, 91);
+    paintForest(g, 0, FN, F, H - FN, 92);
+    paintForest(g, W - F, FN, F, gapE[0] - FN, 93);
+    paintForest(g, W - F, gapE[1], F, H - gapE[1], 94);
+    paintForest(g, 0, H - F, gapS[0], F, 95);
+    paintForest(g, gapS[1], H - F, W - gapS[1], F, 96);
+
+    // ---- the barn floor: nothing where it should be ----
+    const IX = BX + BT, IY = BY + BT, IW = BW - BT * 2, ID = BD - BT * 2;
+    strawScatter(g, IX, IY, IW, ID, 150, 501);
+    strawScatter(g, IX + 6, IY, IW - 60, 12, 70, 502);           // pulled out of the nests
+    strawScatter(g, IX, IY + 30, 44, ID - 30, 60, 503);            // the pens
+    strawScatter(g, 270, 300, 56, 56, 40, 504);                   // round the bales
+    mudPatch(g, 146, 344, 12, 7, 5);                              // pen B, churned up
+    mudPatch(g, 216, 350, 16, 6, 7);                              // at the doors
+    mudPatch(g, 318, 290, 9, 5, 9);                               // at the side door
+    mudPatch(g, 204, 296, 6, 3, 11);
+    footprints(g, [{ x: 212, y: 382 }, { x: 210, y: 334 }, { x: 196, y: 292 }, { x: 174, y: 266 }, { x: 146, y: 262 }], 31);
+    footprints(g, [{ x: 228, y: 380 }, { x: 238, y: 326 }, { x: 262, y: 294 }, { x: 300, y: 290 }, { x: 344, y: 288 }, { x: 382, y: 292 }], 33);
+    footprints(g, [{ x: 232, y: 372 }, { x: 252, y: 300 }, { x: 246, y: 246 }, { x: 236, y: 226 }], 35, { step: 8 });
+    footprints(g, [{ x: 150, y: 350 }, { x: 170, y: 330 }, { x: 196, y: 318 }], 37, { step: 8 });
+    floorTool(g, 'pitchfork', 180, 314, -0.62);
+    floorTool(g, 'rake', 176, 346, 0.18);
+    floorTool(g, 'shovel', 276, 316, 2.5);
+    floorTool(g, 'hammer', 228, 262, 1.1);
+    spilledBucket(g, 206, 330);
+    grainSpill(g, 288, 232, 18, 8, 41);
+    brokenBoards(g, 258, 256);
+    eggClutch(g, 124, 220);
+    // hay dragged out into the yard, prints heading for the road
+    strawScatter(g, 188, 368, 70, 22, 40, 505);
+    footprints(g, [{ x: 250, y: 386 }, { x: 290, y: 440 }, { x: 330, y: 470 }], 39, { step: 9 });
+
+    // ---- the greenhouse: one pot didn't make it ----
+    brokenPot(g, 514, 326);
+    strawScatter(g, 470, 300, 100, 60, 6, 506);
+  };
+
+  m.placeVan(292, 400);
+  const arriveY = 548;
+  m.spawn = { x: Math.round(roadX(arriveY)), y: arriveY };
+  m.arrive = { x: Math.round(roadX(H - 6)), y: H - 6 };
+  return m.done();
+}
+
 export const MAP_BUILDERS = {
   playground: buildPlayground,
   farmhouse: buildFarmhouse,
@@ -602,4 +829,5 @@ export const MAP_BUILDERS = {
   neighborhood: buildNeighborhood,
   tropical: buildTropical,
   farmfields: buildFarmFields,
+  barnyard: buildBarnyard,
 };

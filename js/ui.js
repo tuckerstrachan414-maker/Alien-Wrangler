@@ -16,6 +16,7 @@ const MAP_NAMES = {
   neighborhood: 'Maple Street (Stealth)',
   tropical: 'Isla Verde',
   farmfields: 'Farm Fields',
+  barnyard: 'Barnyard',
 };
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
@@ -92,7 +93,8 @@ export class UI {
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
 
     s.appendChild(this.bigBtn('STORY',
-      save.story.scenesCleared ? 'Stage 1 &mdash; the crash site' : 'Stage 1 &mdash; start here',
+      save.story.scenesCleared >= 2 ? 'Stage 1 &mdash; the barnyard'
+        : save.story.scenesCleared ? 'Stage 1 &mdash; the crash site' : 'Stage 1 &mdash; start here',
       'primary', () => this.showStory()));
     s.appendChild(this.bigBtn('PLAY', 'Contracts &amp; equipment', '', () => this.showPlay()));
     s.appendChild(this.bigBtn('SETTINGS', 'Sound &amp; controls', '', () => this.showSettings('title')));
@@ -118,11 +120,16 @@ export class UI {
     card.appendChild(head);
     card.appendChild(this.el('div', 'card-desc', STAGE1.blurb));
 
+    // a scene opens once you've seen the briefing and cleared the one before;
+    // tap an open one to jump straight in
     const scenes = this.el('div', 'scene-list');
     for (const sc of STAGE1.scenes) {
       const cleared = save.story.scenesCleared >= sc.num;
-      scenes.appendChild(this.el('div', `scene-row ${cleared ? 'done' : ''}`,
-        `<span>SCENE ${sc.num} &middot; ${sc.name.toUpperCase()}</span><b>${cleared ? 'CLEARED' : 'NEW'}</b>`));
+      const open = save.story.introSeen && save.story.scenesCleared >= sc.num - 1;
+      const row = this.el(open ? 'button' : 'div', `scene-row ${cleared ? 'done' : ''} ${open ? 'open' : 'locked'}`,
+        `<span>SCENE ${sc.num} &middot; ${sc.name.toUpperCase()}</span><b>${cleared ? 'CLEARED' : open ? 'NEW' : 'LOCKED'}</b>`);
+      if (open) row.addEventListener('click', () => { sfx.click(); this.actions.startScene(sc.num); });
+      scenes.appendChild(row);
     }
     scenes.appendChild(this.el('div', 'scene-row locked',
       `<span>SCENE ${STAGE1.scenes.length + 1} &middot; ???</span><b>COMING SOON</b>`));
@@ -130,27 +137,34 @@ export class UI {
 
     const row = this.el('div', 'card-row');
     row.appendChild(this.btn(save.story.introSeen ? 'PLAY STAGE 1' : 'BEGIN', 'primary', () => this.actions.startStory()));
-    if (save.story.introSeen) row.appendChild(this.btn('SCENE 1', '', () => this.actions.startScene(1)));
     card.appendChild(row);
-    if (save.story.introSeen) card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 1 starts with the briefing; SCENE 1 skips straight to the fields.'));
+    if (save.story.introSeen) card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 1 starts with the briefing; tap a scene to jump straight to it.'));
     list.appendChild(card);
     s.appendChild(list);
     s.appendChild(this.btn('BACK', '', () => this.showTitle()));
   }
 
-  // End of a story scene: what happened, no money lines at all.
+  // End of a story scene: what happened, no money lines at all. When the
+  // next scene exists, carry straight on into it.
   showStoryResults(r) {
+    const n = r.mission.scene;
+    const sc = STAGE1.scenes[n - 1];
+    const next = STAGE1.scenes[n];
     const s = this.screen();
-    s.appendChild(this.el('div', 'result-verdict ok', `SCENE ${r.mission.scene} COMPLETE`));
+    s.appendChild(this.el('div', 'result-verdict ok', `SCENE ${n} COMPLETE`));
     s.appendChild(this.el('div', 'game-sub', `${STAGE1.name} &middot; ${r.mission.name.toUpperCase()}`));
     const line = (label, val, cls = '') =>
       s.appendChild(this.el('div', 'result-line', `<span>${label}</span><b class="${cls}">${val}</b>`));
     line('Aliens secured', `${r.captured}`, 'pos');
-    line('Bolted down the road', `${r.fled || 0}`, r.fled ? 'neg' : '');
-    s.appendChild(this.el('div', 'tip',
-      'TO BE CONTINUED<br>The rest of them ran north up the dirt road.<br>Scene 2 is on its way.'));
+    line(sc.fled, `${r.fled || 0}`, r.fled ? 'neg' : '');
+    s.appendChild(this.el('div', 'tip', sc.outro));
     s.appendChild(this.el('div', 'menu-spacer'));
-    s.appendChild(this.btn(`REPLAY SCENE ${r.mission.scene}`, 'primary', () => this.actions.startScene(r.mission.scene)));
+    if (next) {
+      s.appendChild(this.bigBtn(`CONTINUE`, `Scene ${next.num} &mdash; ${next.name}`, 'primary', () => this.actions.startScene(next.num)));
+      s.appendChild(this.btn(`REPLAY SCENE ${n}`, '', () => this.actions.startScene(n)));
+    } else {
+      s.appendChild(this.btn(`REPLAY SCENE ${n}`, 'primary', () => this.actions.startScene(n)));
+    }
     s.appendChild(this.btn('STORY', '', () => this.showStory()));
     s.appendChild(this.btn('MAIN MENU', '', () => this.showTitle()));
   }

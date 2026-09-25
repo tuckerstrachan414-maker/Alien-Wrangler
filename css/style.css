@@ -1005,6 +1005,17 @@ html, body {
 .scene-row.done b { color: var(--ok); }
 .scene-row.locked { opacity: 0.45; }
 .scene-row.locked b { color: #8494b8; }
+/* an open scene is a button: tap to play it */
+button.scene-row {
+  width: 100%;
+  border: none;
+  font-family: inherit;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+button.scene-row b::after { content: ' >'; color: var(--accent); }
+button.scene-row:active { background: #2f4a6e; }
 
 /* ---------- Equipment / Skills screen ---------- */
 

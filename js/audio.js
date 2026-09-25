@@ -126,5 +126,8 @@ export const sfx = {
   startle: () => { tone(500, 0.08, 'square', 0.09, 500); tone(700, 0.12, 'square', 0.09, 700, 0.1); },
   objective: () => { tone(880, 0.06, 'square', 0.06); tone(1175, 0.1, 'square', 0.06, 0, 0.07); },
   stampede: () => { noise(1.4, 0.12, 0, 200, 1200); [0, 0.18, 0.34, 0.5, 0.66].forEach(d => tone(900 + Math.random() * 300, 0.08, 'square', 0.04, 400, d)); },
+  // the agent losing his temper: a stamp of the foot, and a muttered growl
+  stomp:   () => { tone(70, 0.14, 'triangle', 0.18, -30); noise(0.09, 0.12, 0, 0, 900); },
+  grumble: () => { [190, 160, 130, 150].forEach((f, i) => tone(f + Math.random() * 20, 0.08, 'square', 0.05, -30, i * 0.09)); noise(0.3, 0.03, 0.05, 300, 1500); },
   sceneClear: () => { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, 0.16, 'square', 0.08, 0, i * 0.11)); },
 };

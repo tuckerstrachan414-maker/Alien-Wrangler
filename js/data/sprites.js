@@ -387,6 +387,8 @@ export const T = {
   // Stage 1 farm fields: tilled soil + crop rows, forest floor, dirt road
   SOIL: 22, WHEAT: 23, CABBAGE: 24, LETTUCE: 25, CARROT: 26, PUMPKIN: 27,
   FOREST: 28, ROAD_DIRT: 29, MEADOW: 30, ROAD_DIRT2: 31,
+  // Stage 1 barnyard: the barn's packed-earth floor, the greenhouse pavers
+  BARN_FLOOR: 32, GH_FLOOR: 33,
 };
 
 /* ---- Stage 1 crop tiles ----
@@ -595,6 +597,38 @@ export function buildTiles() {
     }
     return t;
   })();
+  // ---- Stage 1 barnyard ----
+  // barn floor: trodden earth, darker than the yard, with stray bits of straw
+  tiles[T.BARN_FLOOR] = (() => {
+    const t = speckleTile('#6a4e32', ['#5c432a', '#77593a', '#4f3822', '#634830'], 261, 30);
+    const x = t.getContext('2d');
+    const rnd = mulberry(263);
+    for (let i = 0; i < 3; i++) {
+      const sx = 1 + Math.floor(rnd() * 12), sy = 1 + Math.floor(rnd() * 14);
+      x.fillStyle = '#b8903e'; x.fillRect(sx, sy, 2 + Math.floor(rnd() * 2), 1);
+      x.fillStyle = '#8a6a30'; x.fillRect(sx + 1, sy + 1, 1, 1);
+    }
+    return t;
+  })();
+  // greenhouse: worn clay pavers in a running bond
+  tiles[T.GH_FLOOR] = (() => {
+    const [c, ctx] = canvas(TILE, TILE);
+    ctx.fillStyle = '#a48a74'; ctx.fillRect(0, 0, TILE, TILE);
+    const rnd = mulberry(271);
+    for (let row = 0; row < 4; row++) {
+      const y = row * 4, off = row % 2 ? 4 : 0;
+      for (let bx = -8; bx < TILE; bx += 8) {
+        const x0 = bx + off;
+        const shade = ['#a48a74', '#9a7f6a', '#ae947c'][Math.floor(rnd() * 3)];
+        ctx.fillStyle = shade; ctx.fillRect(x0 + 1, y + 1, 7, 3);
+        ctx.fillStyle = '#bca48c'; ctx.fillRect(x0 + 1, y + 1, 6, 1);   // lit top edge
+      }
+      ctx.fillStyle = '#7a6656'; ctx.fillRect(0, y, TILE, 1);           // mortar
+      for (let bx = off; bx < TILE; bx += 8) ctx.fillRect(bx, y, 1, 4);
+    }
+    return c;
+  })();
+
   // Placeholders for the Maple Street PNG road tiles — overwritten in main.js
   // once pngProps loads; kept as plain asphalt so a load failure still renders.
   for (const id of [T.ROAD_PNG, T.CROSSWALK_H, T.CROSSWALK_V, T.LANE_H, T.LANE_V, T.MANHOLE, T.DRAIN])

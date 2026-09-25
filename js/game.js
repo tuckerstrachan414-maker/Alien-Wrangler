@@ -150,11 +150,16 @@ export class Game {
   }
 
   rustle(a) {
+    const spot = a.hideSpot;
+    // particles draw over everything, so a rustle under a solid roof would
+    // give the hider away through the tiles: indoors it only shows once the
+    // roof is off (or it's glass)
+    if (spot && spot.bld && spot.bld.alpha > 0.6 && !spot.bld.glass) return;
     for (let i = 0; i < 3; i++) {
       this.particles.push({
         x: a.x + (Math.random() - 0.5) * 10, y: a.y - 4 - Math.random() * 6,
         vx: (Math.random() - 0.5) * 14, vy: -8 - Math.random() * 10,
-        life: 0.7, t: 0.7, color: '#54a34a', size: 1,
+        life: 0.7, t: 0.7, color: (spot && spot.rustle) || '#54a34a', size: 1,
       });
     }
   }
@@ -608,6 +613,9 @@ export class Game {
     if (this.director) this.director.update(dt);
     if (!this.running) return;
 
+    // walk-in buildings: lift the roof off while the agent is inside
+    if (this.map.buildings.length) this.updateBuildings(dt);
+
     // camera: the agent, or whatever a cutscene is looking at
     const focus = this.camTarget || p;
     const lerp = 1 - Math.pow(this.camTarget ? this.camEase : 0.001, dt);
@@ -640,6 +648,23 @@ export class Game {
     } else if (this.phase === 'play' && loose.length === 0 && p.carried.length === 0) {
       // caught everyone early
       this.finish();
+    }
+  }
+
+  // Each walk-in building's shell (roof + front wall) fades right out while
+  // the agent is inside its footprint, and half out while the agent is
+  // tucked behind it, so they're never lost under the roof. A cutscene can
+  // pin it (b.force) to show what's going on inside.
+  updateBuildings(dt) {
+    const p = this.player;
+    const k = 1 - Math.pow(0.0004, dt);
+    for (const b of this.map.buildings) {
+      let target = 1;
+      if (b.force != null) target = b.force;
+      else if (p.x > b.x0 && p.x < b.x1 && p.y > b.y0 && p.y < b.y1 + 2) target = b.insideAlpha;
+      else if (p.y < b.y0 + b.t && p.x + 6 > b.ax && p.x - 6 < b.ax + b.shell.width && p.y > b.topAt(p.x) + 1) target = b.behindAlpha;
+      b.alpha += (target - b.alpha) * k;
+      if (Math.abs(target - b.alpha) < 0.01) b.alpha = target;
     }
   }
 
@@ -868,6 +893,10 @@ export class Game {
     }
     for (const d of this.decoys) items.push({ y: d.y, kind: 'decoy', d });
     for (const c of this.deployables) if (c.kind === 'cage') items.push({ y: c.y + 0.5, kind: 'cage', c });
+    for (const b of map.buildings) {
+      if (b.ax - camX > vw || b.ax + b.shell.width - camX < 0 || b.ay - camY > vh || b.baseY - camY < 0) continue;
+      items.push({ y: b.baseY, kind: 'building', b });
+    }
     items.push({ y: p.y, kind: 'player' });
     items.push({ y: map.van.y + 28, kind: 'van' });
     items.sort((i1, i2) => i1.y - i2.y);
@@ -895,6 +924,16 @@ export class Game {
         this.drawDecoy(ctx, it.d, camX, camY);
       } else if (it.kind === 'cage') {
         drawCage(this, ctx, it.c, camX, camY);
+      } else if (it.kind === 'building') {
+        // cutaway walls under the shell, the shell at its current fade
+        const b = it.b;
+        const bx = Math.round(b.ax - camX), by = Math.round(b.ay - camY);
+        if (b.alpha < 0.999) ctx.drawImage(b.cut, bx, by);
+        if (b.alpha > 0.001) {
+          ctx.globalAlpha = b.alpha;
+          ctx.drawImage(b.shell, bx, by);
+          ctx.globalAlpha = 1;
+        }
       } else if (it.kind === 'hidden') {
         // Noise Maker ping marker (fades out over its last second)
         const a = it.a;
@@ -1058,7 +1097,8 @@ export class Game {
   }
 
   shadow(ctx, x, y, w) {
-    ctx.globalAlpha = 0.25;
+    const a = ctx.globalAlpha;
+    ctx.globalAlpha = 0.25 * a;
     ctx.fillStyle = '#000';
     ctx.beginPath();
     ctx.ellipse(x, y, w / 2, w / 5, 0, 0, Math.PI * 2);
@@ -1083,7 +1123,10 @@ export class Game {
     const p = this.player;
     const A = this.assets.actors.player;
     const x = Math.round(p.x - camX), y = Math.round(p.y - camY);
+    if (p.alpha <= 0) return;
+    ctx.globalAlpha = p.alpha;
     this.shadow(ctx, x, y, 12);
+    ctx.globalAlpha = p.alpha;
 
     if (p.state === 'prone' || p.state === 'diving') {
       const img = p.state === 'diving'
@@ -1111,10 +1154,11 @@ export class Game {
       }
       if (p.state === 'stunned') this.drawStars(ctx, x, y - 20 - lift);
       if (p.shieldT > 0) this.drawShield(ctx, p, x, y - lift);
-      if (p.sprinting && Math.random() < 0.3) {
+      if (p.sprinting && Math.random() < 0.3 * p.alpha) {
         this.particles.push({ x: p.x - p.dir.x * 6, y: p.y, vx: -p.dir.x * 10, vy: -4, life: 0.3, t: 0.3, color: '#c8c8d0', size: 1 });
       }
     }
+    ctx.globalAlpha = 1;
   }
 
   drawAlien(ctx, a, camX, camY) {
@@ -1123,10 +1167,14 @@ export class Game {
     const rise = Math.round(a.riseZ || 0);
     const lift = Math.round(a.z) + rise;
 
-    if (a.state !== 'beaming') this.shadow(ctx, x, y, 9);
+    if (a.state !== 'beaming' && a.alpha > 0) {
+      ctx.globalAlpha = a.alpha;
+      this.shadow(ctx, x, y, 9);
+    }
 
-    let alpha = 1;
-    if (a.cloaked) alpha = 0.13;
+    let alpha = a.alpha;
+    if (alpha <= 0) return;
+    if (a.cloaked) alpha *= 0.13;
     ctx.globalAlpha = alpha;
     const img = set[a.facing] || set.down;
     const moving = Math.hypot(a.vx, a.vy) > 12;

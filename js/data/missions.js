@@ -121,6 +121,7 @@ export const MAP_LIST = [
   { id: 'neighborhood', name: 'Maple Street', note: 'Night + noise meter' },
   { id: 'tropical', name: 'Isla Verde', note: 'Jungle and a volcano' },
   { id: 'farmfields', name: 'Farm Fields', note: 'Stage 1 crash site' },
+  { id: 'barnyard', name: 'Barnyard', note: 'Walk-in barn + greenhouse' },
 ];
 
 export const SANDBOX_TIMES = [120, 180, 300, 600, 0];   // 0 = no time limit
