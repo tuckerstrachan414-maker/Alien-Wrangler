@@ -69,6 +69,11 @@ export const input = {
 let controlMode = 'buttons';
 let gadgetSlots = [];    // equipped gadget GEAR entries, [tap slot, swipe-right slot]
 
+// What the player is actually holding right now: 'touch', 'keys' or 'pad'.
+// Follows the last thing used, so tutorial hints can name the right control.
+let method = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ? 'touch' : 'keys';
+export function inputMethod() { return method; }
+
 /* ---------------- gamepad mapping ----------------
    Standard-mapping button indices, shared by Xbox/PlayStation/Switch Pro/most
    generic pads: 0-3 face buttons, 4-5 shoulder bumpers, 6-7 triggers,
@@ -412,6 +417,7 @@ export function setupInput() {
   };
   window.addEventListener('keydown', (e) => {
     if (e.repeat) return;
+    method = 'keys';
     keys[e.code] = true;
     const act = keyActions[e.code];
     if (act) { input.presses[act] = true; e.preventDefault(); }
@@ -440,7 +446,10 @@ export function setupInput() {
   }
 
   // Unlock audio on the very first touch anywhere (incl. menus)
-  document.addEventListener('pointerdown', () => { initAudio(); resumeAudio(); });
+  document.addEventListener('pointerdown', (e) => {
+    initAudio(); resumeAudio();
+    if (e.pointerType === 'touch' || e.pointerType === 'pen') method = 'touch';
+  }, true);
 
   // Kill iOS double-tap zoom / long-press
   document.addEventListener('gesturestart', (e) => e.preventDefault());
@@ -473,7 +482,7 @@ export function setupInput() {
       const pressed = gp.buttons.map((b) => b.pressed || b.value > 0.5);
       for (const key in GP_ACTION_BUTTONS) {
         const i = +key;
-        if (pressed[i] && !prev[i]) input.presses[GP_ACTION_BUTTONS[i]] = true;
+        if (pressed[i] && !prev[i]) { input.presses[GP_ACTION_BUTTONS[i]] = true; method = 'pad'; }
       }
       if (GP_SPRINT_BUTTONS.some((i) => pressed[i])) sprintHeld = true;
       gpPrevPressed.set(gp.index, pressed);
@@ -497,6 +506,7 @@ export function setupInput() {
 
     if (move) {
       gpMoveActive = true;
+      method = 'pad';
       input.move.x = move.x; input.move.y = move.y;
       input.mag = Math.min(1, Math.hypot(move.x, move.y));
     } else if (gpMoveActive) {

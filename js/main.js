@@ -9,6 +9,10 @@ import {
 import { Game } from './game.js';
 import { UI } from './ui.js';
 import { initVersionBadge } from './version.js';
+import { buildVoss } from './data/storyArt.js';
+import { stage1Scene } from './data/stage1.js';
+import { Intro } from './intro.js';
+import { Tutorial } from './tutorial.js';
 
 loadSave();
 setupInput();
@@ -19,6 +23,7 @@ const assets = {
   actors: buildActors(),
   van: buildVan(),
   ufo: buildUfo(),
+  voss: buildVoss(),
 };
 
 // Maple Street's buildings/cars/roads/props are PNGs from a user-supplied
@@ -78,6 +83,7 @@ const ctx = canvas.getContext('2d');
 const hud = document.getElementById('hud');
 const controls = document.getElementById('controls');
 const uiRoot = document.getElementById('ui-root');
+const cineRoot = document.getElementById('cine');
 
 const timerText = document.getElementById('timer-text');
 const hudTimer = document.getElementById('hud-timer');
@@ -86,7 +92,8 @@ const cashText = document.getElementById('cash-text');
 const warnEl = document.getElementById('hud-warning');
 const stamBar = document.getElementById('stamina-bar');
 
-let state = 'menu';    // menu | play | paused
+let state = 'menu';    // menu | intro | play | paused
+let intro = null;      // the Stage 1 opening cutscene while state === 'intro'
 let scale = 4;
 let viewW = 200, viewH = 400;
 let afterResize = () => {};   // replaced once the game exists (edge-arrow insets)
@@ -140,9 +147,13 @@ afterResize = measureInsets;
 
 function enterMission(mission) {
   ui.clear();
+  if (game.director) game.director.destroy();
   hud.classList.remove('hidden');
   controls.classList.remove('hidden');
+  // story scenes: no bank, no clock (the HUD hides the cash + timer pills)
+  hud.classList.toggle('story', !!mission.story);
   game.startMission(mission);
+  if (mission.tutorial) game.director = new Tutorial(game);
   showGadgets(game.loadout.map(id => GEAR.find(g => g.id === id)));
   clearInput();
   measureInsets();
@@ -153,12 +164,35 @@ function leaveMission() {
   state = 'menu';
   hud.classList.add('hidden');
   controls.classList.add('hidden');
+  if (game.director) { game.director.destroy(); game.director = null; }
   clearInput();
+}
+
+// Stage 1 from the top: the opening cutscene, then Scene 1.
+function startStory() {
+  ui.clear();
+  hud.classList.add('hidden');
+  controls.classList.add('hidden');
+  clearInput();
+  if (intro) intro.destroy();
+  intro = new Intro(assets, cineRoot, {
+    onAccept() {
+      save.story.introSeen = true;
+      persist();
+      const done = intro;
+      intro = null;
+      enterMission(stage1Scene(1));
+      done.finish();              // the title card fades off the live scene
+    },
+  });
+  state = 'intro';
 }
 
 const ui = new UI(uiRoot, assets, {
   startMission(n) { enterMission(getMission(n)); },
   startSandbox(mission) { enterMission(mission); },
+  startStory() { startStory(); },
+  startScene(n) { enterMission(stage1Scene(n)); },
   resume() {
     ui.clear();
     clearInput();
@@ -184,6 +218,17 @@ const ui = new UI(uiRoot, assets, {
 });
 
 game.onEnd = (r) => {
+  if (r.mission.story) {
+    // story scenes pay nothing and cost nothing: just remember the progress
+    if (r.cleared && !r.abandoned) {
+      save.story.scenesCleared = Math.max(save.story.scenesCleared, r.mission.scene);
+      persist();
+    }
+    leaveMission();
+    if (r.abandoned) ui.showStory();
+    else ui.showStoryResults(r);
+    return;
+  }
   if (!r.mission.sandbox) {
     save.cash += r.pay;
     if (r.abandoned) save.cash = Math.max(0, save.cash - (r.fee || 0));
@@ -224,7 +269,9 @@ function updateHud() {
   const endless = !!game.mission.endless;
   timerText.textContent = endless ? 'FREE' : game.beamPhase ? '0:00' : fmtTime(game.timer);
   hudTimer.classList.toggle('urgent', !endless && (game.timer < 30 || game.beamPhase));
-  scoreText.textContent = `${game.captured}/${game.totalAliens}`;
+  // a story scene counts toward its goal ("secure 3"), not the whole roster
+  const goal = game.mission.goal || game.totalAliens;
+  scoreText.textContent = `${Math.min(game.captured, goal)}/${goal}`;
   cashText.textContent = `${game.projectedPay()}`;
   warnEl.classList.toggle('hidden', !(!endless && game.timer <= 30 && game.timer > 26.5 && game.phase === 'play'));
   const p = game.player;
@@ -316,6 +363,19 @@ function frame(now) {
 
   pollGamepads();
 
+  if (state === 'intro' && intro) {
+    // tap / Enter / Space / A moves the briefing along; Esc / P / Start skips it
+    if (consumePress('grab') || consumePress('jump')) intro.advance();
+    if (consumePress('pause')) intro.skip();
+    intro.update(dt);
+    if (state === 'intro' && intro) {
+      intro.render(bctx, viewW, viewH);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(buf, 0, 0, viewW, viewH, 0, 0, viewW * scale, viewH * scale);
+      return;
+    }
+  }
+
   if (state === 'play') {
     if (consumePress('pause')) { pause(); return; }
     game.update(dt);
@@ -342,4 +402,4 @@ ui.showTitle();
 requestAnimationFrame(frame);
 
 // debug/testing hook
-window.__aw = { game, ui, save, get state() { return state; } };
+window.__aw = { game, ui, save, get state() { return state; }, get intro() { return intro; } };

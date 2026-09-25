@@ -9,7 +9,7 @@
 
 export const TILE = 16;
 
-function canvas(w, h) {
+export function canvas(w, h) {
   const c = document.createElement('canvas');
   c.width = w; c.height = h;
   const ctx = c.getContext('2d');
@@ -41,7 +41,7 @@ export function flipX(src) {
 }
 
 // Deterministic rng for tile speckles
-function mulberry(seed) {
+export function mulberry(seed) {
   let a = seed >>> 0;
   return () => {
     a |= 0; a = (a + 0x6D2B79F5) | 0;
@@ -53,7 +53,7 @@ function mulberry(seed) {
 
 /* ===================== SHARED MATERIAL PALETTE ===================== */
 // Every prop pulls its colours from here so materials stay consistent.
-const C = {
+export const C = {
   ink:  '#141019',  // outline (warm near-black)
   ink2: '#241d2e',  // soft occlusion outline
   shadow: '#0d0b12',
@@ -384,7 +384,35 @@ export const T = {
   // buildTiles() below leaves these slots as a plain-asphalt placeholder).
   ROAD_PNG: 15, CROSSWALK_H: 16, CROSSWALK_V: 17, LANE_H: 18, LANE_V: 19,
   MANHOLE: 20, DRAIN: 21,
+  // Stage 1 farm fields: tilled soil + crop rows, forest floor, dirt road
+  SOIL: 22, WHEAT: 23, CABBAGE: 24, LETTUCE: 25, CARROT: 26, PUMPKIN: 27,
+  FOREST: 28, ROAD_DIRT: 29, MEADOW: 30, ROAD_DIRT2: 31,
 };
+
+/* ---- Stage 1 crop tiles ----
+   Every crop is planted in horizontal rows on an 8px pitch, so a plot tiles
+   seamlessly and lines up with the tall corn / sunflower row props that sit
+   on the same tilled soil. Anything drawn near a tile edge is wrapped so the
+   texture has no seams. */
+const SOIL_RAMP = ['#8f673c', '#7d5836', '#72502f', '#654429', '#553a24', '#46301e', '#5a3d25', '#6e4c2d'];
+
+function cropTile(seed, drawBand) {
+  const [c, ctx] = canvas(TILE, TILE);
+  for (let y = 0; y < TILE; y++) { ctx.fillStyle = SOIL_RAMP[y % 8]; ctx.fillRect(0, y, TILE, 1); }
+  const rnd = mulberry(seed);
+  // clods + pebbles
+  for (let i = 0; i < 9; i++) {
+    ctx.fillStyle = rnd() < 0.5 ? '#9a7448' : '#3e2a1a';
+    ctx.fillRect(Math.floor(rnd() * TILE), Math.floor(rnd() * TILE), 1, 1);
+  }
+  // wrapped pixel: anything poking past an edge reappears on the far side
+  const px = (x, y, w, h, col) => {
+    ctx.fillStyle = col;
+    for (const ox of [-TILE, 0, TILE]) for (const oy of [-TILE, 0, TILE]) ctx.fillRect(x + ox, y + oy, w, h);
+  };
+  if (drawBand) for (const by of [0, 8]) drawBand(px, by, by === 8, rnd);
+  return c;
+}
 
 function speckleTile(base, specks, seed, density = 14) {
   const [c, ctx] = canvas(TILE, TILE);
@@ -460,6 +488,113 @@ export function buildTiles() {
     return t;
   })();
   tiles[T.LAVAROCK] = speckleTile('#3d3742', ['#2a2530', '#544b58', '#7a1a10'], 141, 18);
+
+  // ---- Stage 1 farm fields ----
+  tiles[T.SOIL] = cropTile(161);
+  tiles[T.CABBAGE] = cropTile(171, (px, by, alt) => {
+    // two fat heads per band, the second band staggered half a plant
+    for (const hx of alt ? [4, 12] : [0, 8]) {
+      px(hx + 1, by + 6, 6, 1, '#3e2a1a');                 // shadow on the soil
+      px(hx + 2, by + 1, 4, 1, '#2f6e2c');
+      px(hx + 1, by + 2, 6, 3, '#2f6e2c');                 // outer leaves
+      px(hx + 2, by + 5, 4, 1, '#2f6e2c');
+      px(hx + 2, by + 2, 4, 3, '#78bf55');                 // head
+      px(hx + 2, by + 2, 2, 1, '#b8e68a');                 // top-left light
+      px(hx + 5, by + 4, 1, 1, '#4f9a3f');
+    }
+  });
+  tiles[T.LETTUCE] = cropTile(181, (px, by, alt) => {
+    // frilly heads, green and red-leaf planted in alternating rows
+    const [o, m, h] = alt ? ['#5a2238', '#9a3a5c', '#c8628a'] : ['#3e9440', '#8fdc62', '#c8f29a'];
+    for (const hx of alt ? [4, 12] : [0, 8]) {
+      px(hx + 1, by + 6, 6, 1, '#3e2a1a');
+      px(hx + 1, by + 1, 1, 1, o); px(hx + 3, by + 1, 2, 1, o); px(hx + 6, by + 1, 1, 1, o);
+      px(hx + 1, by + 2, 6, 3, o);
+      px(hx + 2, by + 5, 4, 1, o);
+      px(hx + 2, by + 2, 4, 2, m); px(hx + 3, by + 4, 2, 1, m);
+      px(hx + 2, by + 2, 1, 1, h); px(hx + 4, by + 2, 1, 1, h);
+    }
+  });
+  tiles[T.CARROT] = cropTile(191, (px, by, alt) => {
+    // feathery tops every 4px with orange shoulders poking out of the ridge
+    for (let i = 0; i < 4; i++) {
+      const x = i * 4 + (alt ? 2 : 0);
+      px(x + 1, by + 5, 2, 1, '#e8782a'); px(x + 1, by + 5, 1, 1, '#f6a24a');
+      px(x + 1, by + 3, 1, 2, '#3e9440'); px(x + 2, by + 2, 1, 3, '#2c6e30');
+      px(x, by + 2, 1, 1, '#5cb85a'); px(x + 3, by + 1, 1, 1, '#5cb85a');
+      px(x + 1, by + 1, 1, 1, '#77c862');
+    }
+  });
+  tiles[T.PUMPKIN] = (() => {
+    const t = cropTile(201);
+    const x = t.getContext('2d');
+    const px = (a, b, w, h, col) => {
+      x.fillStyle = col;
+      for (const ox of [-TILE, 0, TILE]) for (const oy of [-TILE, 0, TILE]) x.fillRect(a + ox, b + oy, w, h);
+    };
+    // winding vine + leaves, then two ribbed pumpkins on a diagonal
+    for (let i = 0; i < 16; i++) px(i, 3 + Math.round(Math.sin(i * 0.8) * 1.5), 1, 1, '#2c6e30');
+    for (let i = 0; i < 16; i++) px(i, 11 + Math.round(Math.cos(i * 0.7) * 1.5), 1, 1, '#2c6e30');
+    for (const [lx, ly] of [[5, 1], [13, 5], [1, 9], [9, 13]]) {
+      px(lx, ly, 3, 2, '#3e9440'); px(lx, ly, 1, 1, '#5cb85a');
+    }
+    for (const [ox, oy] of [[8, 4], [0, 12]]) {
+      px(ox + 3, oy - 1, 1, 1, '#5c3d22');                  // stem
+      px(ox + 1, oy, 5, 1, '#7a3a10');
+      px(ox, oy + 1, 7, 3, '#7a3a10');
+      px(ox + 1, oy + 4, 5, 1, '#7a3a10');
+      px(ox + 1, oy + 1, 5, 3, '#e8781e');
+      px(ox + 2, oy + 1, 1, 3, '#c45a12'); px(ox + 4, oy + 1, 1, 3, '#c45a12');   // ribs
+      px(ox + 1, oy + 1, 1, 1, '#f6a24a');
+    }
+    return t;
+  })();
+  tiles[T.WHEAT] = (() => {
+    const [c, ctx] = canvas(TILE, TILE);
+    ctx.fillStyle = '#c29a44'; ctx.fillRect(0, 0, TILE, TILE);
+    const rnd = mulberry(211);
+    // a dense mat of stalks in gold shades
+    for (let i = 0; i < 80; i++) {
+      ctx.fillStyle = ['#d0aa52', '#a8822f', '#dcb75e', '#9a7430'][Math.floor(rnd() * 4)];
+      ctx.fillRect(Math.floor(rnd() * TILE), Math.floor(rnd() * 15), 1, 2);
+    }
+    // each row: a shadowed furrow line and a crest of bright grain heads
+    for (const by of [0, 8]) {
+      ctx.fillStyle = '#86652a'; ctx.fillRect(0, by + 7, TILE, 1);
+      for (let x = 0; x < TILE; x++) {
+        const y = by + 1 + ((x * 5) % 3);
+        ctx.fillStyle = x % 2 ? '#f2d680' : '#e6c064';
+        ctx.fillRect(x, y, 1, 2);
+        if (x % 3 === 0) { ctx.fillStyle = '#fbe9a8'; ctx.fillRect(x, y, 1, 1); }
+      }
+    }
+    return c;
+  })();
+  tiles[T.FOREST] = speckleTile('#1a3a1f', ['#12301a', '#224a27', '#2b5a2d', '#0f2615'], 221, 24);
+  // packed dirt road; two variants mixed by the map so no pebble pattern repeats
+  const roadDirt = (seed, pebbles) => {
+    const t = speckleTile('#a07a4c', ['#b58c5a', '#8a6640', '#c49c68', '#94704a'], seed, 26);
+    const x = t.getContext('2d');
+    const rnd = mulberry(seed + 2);
+    for (let i = 0; i < pebbles; i++) {    // a pebble with a lit top
+      const px = 1 + Math.floor(rnd() * 13), py = 1 + Math.floor(rnd() * 13);
+      x.fillStyle = '#6e6a62'; x.fillRect(px, py + 1, 2, 1);
+      x.fillStyle = '#b4afa4'; x.fillRect(px, py, 2, 1);
+    }
+    return t;
+  };
+  tiles[T.ROAD_DIRT] = roadDirt(231, 0);
+  tiles[T.ROAD_DIRT2] = roadDirt(251, 0);
+  tiles[T.MEADOW] = (() => {
+    const t = speckleTile('#4a9a42', ['#419039', '#54a345', '#3b8034'], 241, 11);
+    const x = t.getContext('2d');
+    const rnd = mulberry(243);
+    for (const col of ['#eef1f7', '#f6da79', '#eef1f7']) {
+      x.fillStyle = col;
+      x.fillRect(1 + Math.floor(rnd() * 14), 1 + Math.floor(rnd() * 14), 1, 1);
+    }
+    return t;
+  })();
   // Placeholders for the Maple Street PNG road tiles — overwritten in main.js
   // once pngProps loads; kept as plain asphalt so a load failure still renders.
   for (const id of [T.ROAD_PNG, T.CROSSWALK_H, T.CROSSWALK_V, T.LANE_H, T.LANE_V, T.MANHOLE, T.DRAIN])
@@ -723,15 +858,18 @@ export function buildProps() {
     solid: { x: 2, y: 12, w: 30, h: 13 }, jumpable: false, hide: true, tall: false,
   };
 
-  p.scarecrow = {
+  // Scarecrow, with the shirt as a palette so Stage 1 can scatter a few
+  // different ones (plaid, denim, one with a crow sat on its arm).
+  const scarecrow = (shirt, hi, lo, { plaid = false, crow = false } = {}) => ({
     img: propCanvas(18, 26, (px, ctx, box) => {
       px(8, 6, 2, 18, C.wd1); px(8, 6, 1, 18, C.wd3);   // post
       px(2, 9, 14, 2, C.wd1); px(2, 9, 14, 1, C.wd3);   // cross-arm
       // straw poking out of sleeves
       px(1, 9, 2, 2, C.gd2); px(15, 9, 2, 2, C.gd2);
       // burlap shirt
-      box(4, 10, 10, 9, '#7a4aa0');
-      px(5, 11, 8, 1, '#9366c0'); px(5, 17, 8, 1, '#5e3382');
+      box(4, 10, 10, 9, shirt);
+      px(5, 11, 8, 1, hi); px(5, 17, 8, 1, lo);
+      if (plaid) { px(7, 11, 1, 7, lo); px(10, 11, 1, 7, lo); px(5, 15, 8, 1, lo); }
       px(6, 13, 6, 1, C.gd1);              // rope belt / patch
       // head (burlap sack)
       box(6, 2, 6, 6, '#d9c088');
@@ -740,9 +878,17 @@ export function buildProps() {
       // straw hat
       px(3, 1, 12, 2, C.gd1); px(3, 1, 12, 1, C.gd2);
       px(6, 0, 6, 1, C.gd0);
+      if (crow) {
+        px(13, 6, 3, 3, C.ink); px(12, 7, 1, 1, C.ink);   // body + tail
+        px(16, 7, 1, 1, C.gd2);            // beak
+        px(14, 6, 1, 1, '#e8ecf4');        // eye glint
+      }
     }),
     solid: { x: 7, y: 18, w: 4, h: 6 }, jumpable: false, hide: false, tall: true,
-  };
+  });
+  p.scarecrow = scarecrow('#7a4aa0', '#9366c0', '#5e3382');
+  p.scarecrowRed = scarecrow(C.rd2, C.rd3, C.rd0, { plaid: true, crow: true });
+  p.scarecrowBlue = scarecrow(C.bl1, C.bl2, C.bl0, { plaid: false });
 
   p.coop = {
     img: propCanvas(30, 24, (px, ctx, box) => {
@@ -1107,5 +1253,222 @@ export function buildProps() {
     solid: { x: 2, y: 4, w: 26, h: 7 }, jumpable: true, hide: true, tall: false,
   };
 
+  /* ---- Stage 1: farm fields ---- */
+  // Conifer for the thick forest that walls the fields in; mixed in with the
+  // round deciduous `tree` so the tree line doesn't read as one stamp.
+  p.pine = {
+    img: propCanvas(22, 36, (px) => {
+      px(10, 26, 3, 8, C.wd1); px(10, 26, 1, 8, C.wd2); px(9, 33, 5, 2, C.wd0);   // trunk
+      const tiers = [[1, 11, 1, 5], [7, 19, 3, 8], [14, 28, 5, 10]];
+      for (const [y0, y1, w0, w1] of tiers) {
+        px(11, y0 - 1, 1, 1, '#0b1a14');
+        for (let y = y0; y <= y1; y++) {
+          const half = Math.round(w0 + (w1 - w0) * (y - y0) / (y1 - y0));
+          px(11 - half - 1, y, half * 2 + 3, 1, '#0b1a14');         // ink edge
+          px(11 - half, y, half, 1, '#2f664b');                     // lit (left) side
+          px(11, y, half + 1, 1, '#1d4436');                        // shade side
+        }
+        px(11 - w1, y1, w1 * 2 + 1, 1, '#153228');                  // tier underside
+        px(11 - Math.round(w1 * 0.6), y1 - 3, 2, 1, '#4d8a63');     // needle highlights
+        px(11 - Math.round(w1 * 0.3), y1 - 6, 1, 1, '#4d8a63');
+      }
+      px(11 - 1, 1, 1, 2, '#4d8a63');
+    }),
+    solid: { x: 8, y: 27, w: 7, h: 6 }, jumpable: false, hide: false, tall: true,
+  };
+
+  // A crashed alien escape pod, tail buried in the dirt, hatch blown off and
+  // lying beside it. Shaded from a rotated ellipse so the capsule reads round.
+  p.pod = {
+    img: (() => {
+      const [c, ctx] = canvas(28, 22);
+      const px = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x, y, w, h); };
+      const cx = 13, cy = 10, rx = 9.5, ry = 5.8, ang = -0.42;
+      const ca = Math.cos(ang), sa = Math.sin(ang);
+      const at = (x, y) => {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        const u = dx * ca + dy * sa, v = -dx * sa + dy * ca;
+        return (u / rx) ** 2 + (v / ry) ** 2 <= 1 ? { u, v } : null;
+      };
+      // dirt thrown up round the buried tail
+      px(1, 15, 13, 3, '#5c3f27'); px(3, 14, 8, 1, '#5c3f27'); px(2, 18, 10, 1, '#46301e');
+      px(3, 14, 3, 1, '#8f673c'); px(1, 15, 2, 1, '#7d5836');
+      for (let y = 0; y < 22; y++) {
+        for (let x = 0; x < 28; x++) {
+          const q = at(x, y);
+          if (!q) continue;
+          const edge = !at(x - 1, y) || !at(x + 1, y) || !at(x, y - 1) || !at(x, y + 1);
+          let col;
+          if (edge) col = C.ink;
+          else if (q.u < -6.6) col = q.v < 0 ? C.mt2 : C.mt1;                    // thruster collar
+          else if (q.u > 1.5 && q.u < 6.2 && q.v < -0.6 && q.v > -4.4) col = q.v < -3.2 ? '#a9f7ee' : C.cy;
+          else if (Math.abs(q.u + 2.8) < 0.8) col = q.v < 0 ? '#b98cf5' : '#7a44cf'; // hull band
+          else col = q.v < -3.2 ? C.mt5 : q.v < 0 ? C.mt4 : q.v < 3 ? C.mt3 : C.mt2;
+          px(x, y, 1, 1, col);
+        }
+      }
+      // re-entry scorching + a torn seam
+      px(15, 12, 2, 1, '#4a4452'); px(18, 10, 1, 2, '#4a4452'); px(9, 13, 1, 1, '#4a4452');
+      px(4, 16, 3, 1, C.ink);                                         // buried edge
+      // the blown hatch, lying on the ground
+      px(20, 16, 6, 3, C.ink); px(21, 15, 4, 1, C.ink); px(21, 19, 4, 1, C.ink);
+      px(21, 16, 4, 2, C.mt4); px(21, 16, 4, 1, C.mt5); px(22, 18, 2, 1, '#7a44cf');
+      return c;
+    })(),
+    solid: { x: 5, y: 8, w: 16, h: 10 }, jumpable: false, hide: false, tall: true,
+  };
+
   return p;
+}
+
+/* ============================ STAGE 1 BUILDERS ============================ */
+
+// Filled pixel disc (no anti-aliasing), for canopies and craters.
+function disc(ctx, cx, cy, r, col) {
+  ctx.fillStyle = col;
+  for (let dy = -r; dy <= r; dy++) {
+    const half = Math.floor(Math.sqrt(r * r - dy * dy) + 0.35);
+    ctx.fillRect(cx - half, cy + dy, half * 2 + 1, 1);
+  }
+}
+
+// One row of tall crops `w` px wide, as a y-sorted prop with no collision:
+// actors wade through the rows and the stalks in front of them overlap
+// their legs. The row's base (where the stalks meet the soil) is the bottom
+// pixel of the image.
+const ROW_CACHE = new Map();
+export function cropRow(kind, w, seed = 1) {
+  const key = `${kind}:${w}:${seed}`;
+  if (ROW_CACHE.has(key)) return ROW_CACHE.get(key);
+  const rnd = mulberry(seed * 977 + w);
+  let def;
+  if (kind === 'corn') {
+    const H = 18;
+    def = {
+      img: propCanvas(w, H, (px) => {
+        const base = H - 1;
+        px(0, base, w, 1, '#3e2a1a');                           // shadow line along the ridge
+        for (let x = 1 + Math.floor(rnd() * 3); x < w - 1; x += 4 + (rnd() < 0.3 ? 1 : 0)) {
+          const h = 11 + Math.floor(rnd() * 4);
+          const top = base - h;
+          px(x, top + 2, 1, h - 2, C.lf1);                      // stalk
+          px(x, top + 2, 1, Math.round(h * 0.4), C.lf2);
+          // three long leaves, alternating sides, drooping at the tips
+          let side = rnd() < 0.5 ? -1 : 1;
+          for (const f of [0.3, 0.55, 0.8]) {
+            const ly = base - Math.round(h * f);
+            const lx = side < 0 ? x - 3 : x + 1;
+            px(lx, ly, 3, 1, C.lf2);
+            px(side < 0 ? x - 3 : x + 3, ly + 1, 1, 1, C.lf1);   // drooping tip
+            px(side < 0 ? x - 1 : x + 1, ly, 1, 1, C.lf3);       // lit where it leaves the stalk
+            side = -side;
+          }
+          if (rnd() < 0.55) { px(x + 1, base - Math.round(h * 0.45), 1, 2, C.gd2); }   // ear
+          // tassel
+          px(x, top, 1, 2, C.gd2); px(x - 1, top + 1, 1, 1, C.gd1); px(x + 1, top + 1, 1, 1, C.gd1);
+          px(x, top, 1, 1, C.gd3);
+        }
+      }),
+    };
+  } else {
+    // sunflowers: taller and sparser, heads turned to face the camera
+    const H = 26;
+    def = {
+      img: propCanvas(w, H, (px) => {
+        const base = H - 1;
+        for (let x = 3 + Math.floor(rnd() * 3); x < w - 3; x += 7 + Math.floor(rnd() * 3)) {
+          const h = 16 + Math.floor(rnd() * 5);
+          px(x - 1, base, 3, 1, C.wd0);
+          px(x, base - h + 3, 1, h - 3, C.lf1);                 // stalk
+          const ly = base - Math.round(h * 0.45);
+          px(x - 3, ly, 3, 2, C.lf1); px(x - 3, ly, 2, 1, C.lf3);
+          px(x + 1, ly - 3, 3, 2, C.lf1); px(x + 2, ly - 3, 2, 1, C.lf3);
+          const hy = base - h;                                  // head, centred on the stalk top
+          px(x - 1, hy - 3, 1, 1, C.gd1); px(x + 1, hy - 3, 1, 1, C.gd1);
+          px(x - 2, hy - 2, 5, 1, '#f6c83a');
+          px(x - 3, hy - 1, 7, 3, '#f6c83a');
+          px(x - 2, hy + 2, 5, 1, '#f6c83a');
+          px(x - 1, hy + 3, 1, 1, C.gd1); px(x + 1, hy + 3, 1, 1, C.gd1);
+          px(x - 2, hy - 2, 2, 1, '#fbe07a');                   // petals catching the light
+          px(x - 1, hy - 1, 3, 3, C.wd1); px(x, hy, 1, 1, C.wd0);   // seed disc
+          px(x - 1, hy - 1, 1, 1, C.wd2);
+        }
+      }),
+    };
+  }
+  Object.assign(def, { solid: null, jumpable: false, hide: false, tall: true });
+  ROW_CACHE.set(key, def);
+  return def;
+}
+
+// Paint a dense forest canopy into rect (x, y, w, h) of a ground canvas:
+// overlapping crowns, round and pine, drawn back-to-front so the ones lower
+// on screen sit in front. It's baked into the ground because nobody can walk
+// in there; the tree props along the forest edge do the y-sorting.
+export function paintForest(ctx, x, y, w, h, seed = 1) {
+  const rnd = mulberry(seed);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x - 4, y - 4, w + 8, h + 8);
+  ctx.clip();
+  ctx.fillStyle = '#12301a';
+  ctx.fillRect(x, y, w, h);
+  const crowns = [];
+  for (let cy = y + 4; cy < y + h + 6; cy += 8) {
+    for (let cx = x + 3 + ((cy / 8) % 2) * 5; cx < x + w + 6; cx += 10) {
+      crowns.push({
+        x: Math.round(cx + (rnd() - 0.5) * 6), y: Math.round(cy + (rnd() - 0.5) * 4),
+        r: 6 + Math.floor(rnd() * 4), pine: rnd() < 0.32,
+      });
+    }
+  }
+  crowns.sort((a, b) => a.y - b.y);
+  for (const c of crowns) {
+    if (c.pine) {
+      // a conifer top seen from above-front: a stepped dark cone
+      for (let i = 0; i <= c.r + 2; i++) {
+        const half = Math.round(i * 0.75);
+        ctx.fillStyle = '#0b1a14'; ctx.fillRect(c.x - half - 1, c.y - c.r + i, half * 2 + 3, 1);
+        ctx.fillStyle = '#2f664b'; ctx.fillRect(c.x - half, c.y - c.r + i, half, 1);
+        ctx.fillStyle = '#1d4436'; ctx.fillRect(c.x, c.y - c.r + i, half + 1, 1);
+      }
+      ctx.fillStyle = '#4d8a63'; ctx.fillRect(c.x - 1, c.y - c.r + 2, 1, 2);
+    } else {
+      disc(ctx, c.x, c.y, c.r + 1, '#0c1f10');                  // outline
+      disc(ctx, c.x, c.y, c.r, C.lf0);                          // core shadow
+      disc(ctx, c.x - 1, c.y - 1, c.r - 1, C.lf1);
+      disc(ctx, c.x - Math.round(c.r * 0.3), c.y - Math.round(c.r * 0.35), Math.round(c.r * 0.55), C.lf2);
+      ctx.fillStyle = C.lf3;
+      ctx.fillRect(c.x - Math.round(c.r * 0.5), c.y - Math.round(c.r * 0.6), 2, 1);
+    }
+  }
+  ctx.restore();
+}
+
+// Burnt, cratered ground where a pod came down: dark core, dithered rim and
+// soil thrown out in streaks. Baked into the ground canvas under the pod.
+export function scorchDecal(w, h, seed = 1) {
+  const [c, ctx] = canvas(w, h);
+  const rnd = mulberry(seed);
+  const B = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+  const cx = w / 2, cy = h / 2;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const d = Math.hypot((x + 0.5 - cx) / (w / 2), (y + 0.5 - cy) / (h / 2));
+      const ang = Math.atan2(y - cy, x - cx);
+      const streak = 0.12 * Math.sin(ang * 7 + seed) + 0.08 * Math.sin(ang * 13 + seed * 2);
+      const t = 1 - (d - streak);                                // 1 at the centre, 0 at the rim
+      const thr = (B[(y & 3) * 4 + (x & 3)] + 0.5) / 16;
+      if (t < 0.05 || t * 1.6 < thr) continue;
+      ctx.fillStyle = t > 0.62 ? '#1e1712' : t > 0.38 ? '#2e241c' : t > 0.2 ? '#3e2e20' : '#5a3f27';
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  // clods of soil flung out past the rim
+  for (let i = 0; i < 12; i++) {
+    const a = rnd() * Math.PI * 2, r = 0.85 + rnd() * 0.25;
+    ctx.fillStyle = rnd() < 0.5 ? '#6b4a2e' : '#4a321f';
+    ctx.fillRect(Math.round(cx + Math.cos(a) * r * w / 2), Math.round(cy + Math.sin(a) * r * h / 2), 1, 1);
+  }
+  return c;
 }

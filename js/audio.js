@@ -109,4 +109,22 @@ export const sfx = {
   },
   typeReturn: () => { noise(0.1, 0.05, 0, 700, 3000); tone(2100, 0.2, 'sine', 0.04, 0, 0.06); },
   stamp:   () => { noise(0.1, 0.25, 0, 0, 900); tone(85, 0.22, 'triangle', 0.22, -35); },
+  // ---- story cutscenes ----
+  // the cruiser burning in: a long low roar
+  rumble:  () => { noise(2.6, 0.16, 0, 0, 260); tone(46, 2.4, 'sawtooth', 0.05, -12); },
+  boom:    (big = false) => {
+    noise(big ? 1.1 : 0.5, big ? 0.34 : 0.2, 0, 0, big ? 700 : 1100);
+    tone(big ? 60 : 90, big ? 0.9 : 0.4, 'triangle', big ? 0.3 : 0.18, -30);
+  },
+  pod:     () => { tone(520 + Math.random() * 200, 0.12, 'square', 0.04, 500); noise(0.08, 0.05, 0.02, 1800); },
+  static:  () => noise(0.22, 0.07, 0, 1500, 7000),
+  // Handler Voss "talking": a low blip per syllable, pitch wobbling a little
+  voice:   () => tone(150 + Math.random() * 45, 0.05, 'square', 0.035, -20),
+  radio:   () => { noise(0.07, 0.06, 0, 1200, 5000); tone(1320, 0.05, 'square', 0.035, 0, 0.07); tone(990, 0.05, 'square', 0.035, 0, 0.12); },
+  accept:  () => { [392, 523, 659, 784].forEach((f, i) => tone(f, 0.16, 'square', 0.08, 0, i * 0.08)); tone(1046, 0.4, 'triangle', 0.06, 0, 0.32); },
+  // the agent's double-take: two rising yelps
+  startle: () => { tone(500, 0.08, 'square', 0.09, 500); tone(700, 0.12, 'square', 0.09, 700, 0.1); },
+  objective: () => { tone(880, 0.06, 'square', 0.06); tone(1175, 0.1, 'square', 0.06, 0, 0.07); },
+  stampede: () => { noise(1.4, 0.12, 0, 200, 1200); [0, 0.18, 0.34, 0.5, 0.66].forEach(d => tone(900 + Math.random() * 300, 0.08, 'square', 0.04, 400, d)); },
+  sceneClear: () => { [523, 659, 784, 1046, 784, 1046].forEach((f, i) => tone(f, 0.16, 'square', 0.08, 0, i * 0.11)); },
 };

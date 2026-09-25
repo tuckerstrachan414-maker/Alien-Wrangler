@@ -1,4 +1,5 @@
-import { T, TILE, buildProps } from './sprites.js';
+import { T, TILE, buildProps, cropRow, paintForest, scorchDecal, mulberry } from './sprites.js';
+import { paintPath } from '../terrain.js';
 
 // A map = ground tile grid + props (with solids & hide spots) + van + player spawn.
 // World units are pixels; tiles are 16px.
@@ -18,6 +19,9 @@ class MapBuilder {
     this.stealth = false;   // neighbourhood: keep-quiet suspicion mechanic
     this.tint = null;       // e.g. 'night' -> dark overlay
     this.volcano = null;    // {x,y} crater -> ambient smoke
+    this.smoke = [];        // [{x,y}] thin smoke columns (crashed pods)
+    this.blend = false;     // soft dithered edges between ground textures (terrain.js)
+    this.paintGround = null; // (ctx, tiles) => extra art baked into the ground canvas
     this.van = { x: 60, y: 60 };
     this.spawn = { x: 80, y: 80 };
     // world border walls
@@ -439,10 +443,163 @@ export function buildTropical() {
   return m.done();
 }
 
+/* ------------------------- FARM FIELDS (Stage 1, Scene 1) ------------------------- */
+// Where the escape pods came down: rows and rows of crops either side of a
+// dirt road, walled in by thick forest. The road runs north out of the map
+// through a gap in the trees; that's the exit to Scene 2 and the way the
+// aliens bolt once three of them have been caught.
+//
+// Tall crops (corn, sunflowers) are row props you wade through; everything
+// else is ground tiles. Ground textures fade into each other (map.blend) and
+// the forest canopy, scorch marks and so on are painted into the ground.
+export function buildFarmFields() {
+  const m = new MapBuilder('Farm Fields', 46, 42, T.GRASS);
+  const W = m.w, H = m.h, F = 48;             // F: forest band thickness
+  const rnd = mulberry(4242);
+  m.variety(T.GRASS, T.GRASS2, 0.3, 61);
+  m.variety(T.GRASS, T.MEADOW, 0.07, 62);
+  m.blend = true;
+
+  // ---- plots (tiles) ----
+  const CORN_W = [4, 4, 14, 8], CORN_E = [28, 23, 14, 8], SUN_E = [27, 4, 15, 7];
+  const TUTOR = [16, 20, 5, 5];               // the little corn patch by the van
+  for (const p of [CORN_W, CORN_E, SUN_E, TUTOR]) m.fill(T.SOIL, ...p);
+  m.fill(T.WHEAT, 4, 14, 7, 9);               // west wheat
+  m.fill(T.PUMPKIN, 12, 14, 7, 4);
+  m.fill(T.CABBAGE, 4, 25, 9, 7);
+  m.fill(T.CARROT, 14, 27, 4, 6);
+  m.fill(T.WHEAT, 4, 34, 14, 4);              // south-west wheat
+  m.fill(T.LETTUCE, 27, 14, 7, 7);
+  m.fill(T.CARROT, 36, 14, 7, 7);
+  m.fill(T.WHEAT, 27, 33, 16, 5);             // south-east wheat
+
+  // ---- forest floor round the edge (canopy is painted on top) ----
+  m.fill(T.FOREST, 0, 0, m.tw, 3).fill(T.FOREST, 0, m.th - 3, m.tw, 3);
+  m.fill(T.FOREST, 0, 0, 3, m.th).fill(T.FOREST, m.tw - 3, 0, 3, m.th);
+
+  // ---- the dirt road: a gentle S from the south edge to the north exit ----
+  // Painted as a smooth curve in paintGround (tiles can only step 16px at a
+  // time); where it cuts through the forest the floor is grass.
+  const ROAD = [[376, H + 30], [376, 560], [360, 480], [360, 380], [392, 300], [392, 210], [360, 130], [360, -40]];
+  const roadX = (y) => {
+    for (let i = 0; i < ROAD.length - 1; i++) {
+      const [x0, y0] = ROAD[i], [x1, y1] = ROAD[i + 1];
+      if (y <= y0 && y >= y1) return x0 + (x1 - x0) * (y0 - y) / (y0 - y1);
+    }
+    return ROAD[ROAD.length - 1][0];
+  };
+  for (let ty = 0; ty < m.th; ty++) {
+    if (ty >= 3 && ty < m.th - 3) continue;
+    const cx = roadX(ty * TILE + TILE / 2);
+    for (let tx = 0; tx < m.tw; tx++) {
+      if (Math.abs(tx * TILE + TILE / 2 - cx) < 34) m.ground[ty * m.tw + tx] = T.GRASS2;
+    }
+  }
+  // the road as a route for scripted runs, south to north, and the exit
+  m.road = ROAD.slice(1, -1).map(([x, y]) => ({ x, y }));
+  m.exit = { x: roadX(0), y: -30 };
+  m.roadX = roadX;
+
+  // ---- thick forest: solid bands with a gap where the road passes ----
+  const gapT = [roadX(F / 2) - 30, roadX(F / 2) + 30];
+  const gapB = [roadX(H - F / 2) - 30, roadX(H - F / 2) + 30];
+  m.solids.push(
+    { x: 0, y: 0, w: gapT[0], h: F + 6, jumpable: false },
+    { x: gapT[1], y: 0, w: W - gapT[1], h: F + 6, jumpable: false },
+    { x: 0, y: H - F + 2, w: gapB[0], h: F, jumpable: false },
+    { x: gapB[1], y: H - F + 2, w: W - gapB[1], h: F, jumpable: false },
+    { x: 0, y: 0, w: F - 2, h: H, jumpable: false },
+    { x: W - F + 2, y: 0, w: F - 2, h: H, jumpable: false },
+  );
+  // a front row of real trees along each inner edge (these y-sort with the
+  // actors); the canopy behind them is baked into the ground
+  const edgeTree = (cx, baseY) => {
+    const key = rnd() < 0.45 ? 'pine' : 'tree';
+    const img = PROPS[key].img;
+    m.prop(key, Math.round(cx - img.width / 2), Math.round(baseY - img.height), { noHide: true });
+  };
+  const inGap = (x, gap) => x > gap[0] - 16 && x < gap[1] + 16;
+  for (let x = 10; x < W - 4; x += 14 + Math.floor(rnd() * 4)) {
+    if (!inGap(x, gapT)) edgeTree(x + (rnd() - 0.5) * 4, F + 4 + rnd() * 6);
+    if (!inGap(x, gapB)) edgeTree(x + (rnd() - 0.5) * 4, H - F + 20 + rnd() * 8);
+  }
+  for (let y = F + 18; y < H - F + 10; y += 13 + Math.floor(rnd() * 4)) {
+    edgeTree(F - 12 + (rnd() - 0.5) * 6, y);
+    edgeTree(W - F + 12 + (rnd() - 0.5) * 6, y);
+  }
+
+  // ---- tall crops: one prop per row ----
+  const rows = (kind, [tx, ty, tw, th], pitch, seed) => {
+    for (let k = 0, base = ty * TILE + (pitch === 8 ? 6 : 12); base < (ty + th) * TILE; k++, base += pitch) {
+      const def = cropRow(kind, tw * TILE, seed + k);
+      m.customProp(def, tx * TILE, base - def.img.height + 1);
+    }
+  };
+  rows('corn', CORN_W, 8, 10);
+  rows('corn', CORN_E, 8, 40);
+  rows('corn', TUTOR, 8, 70);
+  rows('sunflower', SUN_E, 16, 90);
+
+  // ---- hiding spots: deep in the tall crops, the wheat and the pumpkins ----
+  const spots = (xs, ys) => { for (const y of ys) for (const x of xs) m.hideSpots.push({ x, y, inside: true }); };
+  spots([84, 132, 180, 228, 270], [92, 132, 172]);           // west corn
+  spots([468, 516, 564, 612, 656], [392, 432, 476]);         // east corn
+  spots([452, 500, 548, 596, 644], [96, 150]);               // sunflowers
+  spots([96, 150], [256, 300, 350]);                         // west wheat
+  spots([100, 180, 260], [584]);                             // south-west wheat
+  spots([470, 560, 650], [572]);                             // south-east wheat
+  spots([230, 280], [262]);                                  // pumpkins
+  // the tutorial patch: close enough to the van to find on your first go
+  m.tutorSpot = { x: 296, y: 360, inside: true };
+  m.hideSpots.push(m.tutorSpot, { x: 320, y: 390, inside: true });
+
+  // ---- crashed escape pods: scorched craters, smoke, room to hide in the hatch ----
+  const decals = [];
+  const pod = (x, y, seed) => {
+    decals.push({ img: scorchDecal(46, 28, seed), x: x - 9, y: y - 2 });
+    m.prop('pod', x, y);
+    m.smoke.push({ x: x + 9, y: y + 12 });
+    m.hideSpots.push({ x: x + 24, y: y + 22, inside: true });
+  };
+  pod(128, 316, 3);                                          // west wheat
+  pod(440, 184, 5);                                          // by the road, north
+  pod(610, 266, 7);                                          // east carrots
+  pod(490, 546, 9);                                          // south-east wheat
+  pod(206, 350, 11);                                         // beside the tutorial patch
+
+  // ---- scarecrows ----
+  const crows = [['scarecrow', 150, 96], ['scarecrowRed', 78, 232], ['scarecrowBlue', 122, 430],
+    ['scarecrowRed', 500, 248], ['scarecrowBlue', 590, 88], ['scarecrow', 624, 546], ['scarecrowBlue', 250, 560]];
+  for (const [key, x, y] of crows) m.prop(key, x, y);
+
+  // ---- fences + hay bales to hop (and to teach hopping) ----
+  m.fenceRowH(240, 410, 6);                                  // south of the tutorial patch
+  m.fenceRowV(330, 520, 5);                                  // along the road, west side
+  m.fenceRowV(424, 500, 5);                                  // along the road, east side
+  m.prop('hay', 150, 198); m.prop('hay', 300, 540); m.prop('hay', 520, 342);
+  m.prop('hay', 438, 452); m.prop('hay', 588, 200);
+
+  m.paintGround = (g, tiles) => {
+    paintPath(g, tiles, ROAD.map(([x, y]) => ({ x, y })), { halfW: 22, texIds: [T.ROAD_DIRT, T.ROAD_DIRT2] });
+    paintForest(g, 0, 0, F, H, 75);
+    paintForest(g, W - F, 0, F, H, 76);
+    paintForest(g, 0, 0, gapT[0], F, 71);
+    paintForest(g, gapT[1], 0, W - gapT[1], F, 72);
+    paintForest(g, 0, H - F, gapB[0], F, 73);
+    paintForest(g, gapB[1], H - F, W - gapB[1], F, 74);
+    for (const d of decals) g.drawImage(d.img, d.x, d.y);
+  };
+
+  m.placeVan(300, 450);
+  m.spawn = { x: 374, y: 486 };
+  return m.done();
+}
+
 export const MAP_BUILDERS = {
   playground: buildPlayground,
   farmhouse: buildFarmhouse,
   shipyard: buildShipyard,
   neighborhood: buildNeighborhood,
   tropical: buildTropical,
+  farmfields: buildFarmFields,
 };

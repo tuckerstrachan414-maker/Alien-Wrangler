@@ -23,8 +23,32 @@ fullscreen play with no browser bars. Works in both **portrait and landscape** �
 rotate the phone and the controls and camera adapt (landscape shows a wider strip of
 the map at the same zoom).
 
+## 📖 Story — Stage 1 (tutorial)
+
+**STORY** on the title screen. Stage 1 teaches the controls and the basics of the job. There's
+no money, shop or upgrades anywhere in it: base kit only, no clock, no UFO, no payout.
+
+1. **Intro cutscene.** A satellite replay: an alien cruiser burns into the atmosphere, takes a
+   hit, breaks apart and scatters escape pods over the fields. The camera pulls back and it's
+   playing on the wall monitor of an ops room, where **Handler Voss** briefs you (typed-out lines
+   with a talking portrait; the monitor follows along: orbit track, radar, the debris impact,
+   the trajectory, the landing zone). Tap to move it along, **SKIP** for the whole thing.
+   Choose **ACCEPT ORDERS**.
+2. **Scene 1: Farm Fields.** Rows and rows of corn, sunflowers, wheat, cabbages, lettuce,
+   carrots and pumpkins either side of a dirt road, scarecrows scattered about, crashed pods
+   still smoking, all walled in by thick forest. 15 Grunts are hiding in the crops. The tutorial
+   walks you through moving, finding a hiding alien, grabbing it and loading it into the van,
+   with every hint worded for the controls you're actually using (touch buttons, no-buttons
+   gestures, keyboard or gamepad) and the control it names glowing. Sprint, dive, jump, dash and
+   "cornered aliens fight back" tips turn up the first time they matter, and Voss chimes in on
+   the radio. **Secure 3** and the other twelve break cover and bolt north down the dirt road;
+   you do a double-take (**! ! !**) and give chase, and the scene ends.
+
+Scene 2 picks up from the road (coming soon). All the story text lives in `js/data/stage1.js`.
+
 ## 📺 Menus
 
+- **STORY** — Stage 1: **PLAY STAGE 1** from the briefing, or jump straight into **SCENE 1** once you've seen it.
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
 - **MISSION BRIEFING** — deploying on a contract opens a short classified CIA memo that types itself out
   (with typewriter sound) beside your personnel file: a 2-3 sentence situation report (including map rules
@@ -115,6 +139,9 @@ deducted from it. You need at least one capture to clear a mission and unlock th
   fined. Sneak on the lawns, use the hedges and parked cars for cover, save the loud moves for the road.
 - **Isla Verde** — a lush jungle island with a smoking **volcano** in the middle. Palms, ferns, tiki
   torches and huts everywhere for the aliens to duck behind; ocean on all sides.
+- **Farm Fields** *(Stage 1)* — the crash site. Tall corn and sunflower rows you wade through, low crops
+  in between, a winding dirt road out through the forest to the north. Ground textures fade into each
+  other instead of meeting on a hard tile edge. Also playable in Sandbox.
 
 13 missions across the five maps, then endless **Overtime Shifts** (rotating every map) that keep scaling up.
 
@@ -186,8 +213,13 @@ js/briefing.js      mission brief: CIA memo builder, alien intel cards, typewrit
 js/loadout.js       two-slot gadget loadout (resolve against owned gear, equip / cycle / swap)
 js/weapons.js       every hand-fired gadget: fire / cooldown / world fx, shared by the agent and decoys
 js/decoy.js         Decoy Agent AI (flank-and-herd hunting, uses your gear, can't grab)
+js/intro.js         Stage 1 opening cutscene: satellite replay, pull-back to the ops room, Voss's briefing
+js/tutorial.js      Stage 1 Scene 1 director: tutorial steps, hints, radio, the stampede cutscene
+js/terrain.js       dithered fades between ground textures + smooth painted roads
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
-js/data/maps.js     the five maps
+js/data/storyArt.js story art: Handler Voss, the alien cruiser + pods, 3x5 pixel font
+js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines
+js/data/maps.js     the six maps
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
 js/save.js          localStorage save (progress + settings + sandbox loadout)
 js/audio.js         WebAudio synth SFX

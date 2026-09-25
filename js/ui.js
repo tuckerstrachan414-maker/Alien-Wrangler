@@ -7,6 +7,7 @@ import { sfx } from './audio.js';
 import { buildReport, buildDossier, typewrite, renderMugshot, statRow } from './briefing.js';
 import { resolveLoadout, equipGadget, cycleSlot, slotControl, ownedGadgets } from './loadout.js';
 import { resolveAdvanced, equipAdvanced, cycleAdvancedSlot, ownedAdvanced } from './advancedGear.js';
+import { STAGE1 } from './data/stage1.js';
 
 const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
@@ -14,6 +15,7 @@ const MAP_NAMES = {
   shipyard: 'Rust Harbor Shipyard',
   neighborhood: 'Maple Street (Stealth)',
   tropical: 'Isla Verde',
+  farmfields: 'Farm Fields',
 };
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
@@ -89,7 +91,10 @@ export class UI {
 
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
 
-    s.appendChild(this.bigBtn('PLAY', 'Contracts &amp; equipment', 'primary', () => this.showPlay()));
+    s.appendChild(this.bigBtn('STORY',
+      save.story.scenesCleared ? 'Stage 1 &mdash; the crash site' : 'Stage 1 &mdash; start here',
+      'primary', () => this.showStory()));
+    s.appendChild(this.bigBtn('PLAY', 'Contracts &amp; equipment', '', () => this.showPlay()));
     s.appendChild(this.bigBtn('SETTINGS', 'Sound &amp; controls', '', () => this.showSettings('title')));
     s.appendChild(this.bigBtn('SANDBOX', 'Any map, any gear &mdash; free play', '', () => this.showSandbox()));
 
@@ -97,6 +102,57 @@ export class UI {
       save.controlMode === 'gestures'
         ? 'NO-BUTTONS CONTROLS: left half walks, right half acts.<br>Change it any time in Settings.'
         : 'Left thumb moves, right thumb acts. Prefer gestures?<br>Switch to no-buttons controls in Settings.'));
+  }
+
+  /* ---------------- story ---------------- */
+
+  // Stage 1 and its scenes. No bank, no shop: the story introduces those later.
+  showStory() {
+    const s = this.screen();
+    s.appendChild(this.el('div', 'game-title', 'STORY'));
+    const list = this.el('div', 'card-list');
+    const card = this.el('div', 'card story-card');
+    const head = this.el('div', 'card-head');
+    head.appendChild(this.el('div', 'card-title', STAGE1.name));
+    head.appendChild(this.el('div', 'story-tag', STAGE1.sub));
+    card.appendChild(head);
+    card.appendChild(this.el('div', 'card-desc', STAGE1.blurb));
+
+    const scenes = this.el('div', 'scene-list');
+    for (const sc of STAGE1.scenes) {
+      const cleared = save.story.scenesCleared >= sc.num;
+      scenes.appendChild(this.el('div', `scene-row ${cleared ? 'done' : ''}`,
+        `<span>SCENE ${sc.num} &middot; ${sc.name.toUpperCase()}</span><b>${cleared ? 'CLEARED' : 'NEW'}</b>`));
+    }
+    scenes.appendChild(this.el('div', 'scene-row locked',
+      `<span>SCENE ${STAGE1.scenes.length + 1} &middot; ???</span><b>COMING SOON</b>`));
+    card.appendChild(scenes);
+
+    const row = this.el('div', 'card-row');
+    row.appendChild(this.btn(save.story.introSeen ? 'PLAY STAGE 1' : 'BEGIN', 'primary', () => this.actions.startStory()));
+    if (save.story.introSeen) row.appendChild(this.btn('SCENE 1', '', () => this.actions.startScene(1)));
+    card.appendChild(row);
+    if (save.story.introSeen) card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 1 starts with the briefing; SCENE 1 skips straight to the fields.'));
+    list.appendChild(card);
+    s.appendChild(list);
+    s.appendChild(this.btn('BACK', '', () => this.showTitle()));
+  }
+
+  // End of a story scene: what happened, no money lines at all.
+  showStoryResults(r) {
+    const s = this.screen();
+    s.appendChild(this.el('div', 'result-verdict ok', `SCENE ${r.mission.scene} COMPLETE`));
+    s.appendChild(this.el('div', 'game-sub', `${STAGE1.name} &middot; ${r.mission.name.toUpperCase()}`));
+    const line = (label, val, cls = '') =>
+      s.appendChild(this.el('div', 'result-line', `<span>${label}</span><b class="${cls}">${val}</b>`));
+    line('Aliens secured', `${r.captured}`, 'pos');
+    line('Bolted down the road', `${r.fled || 0}`, r.fled ? 'neg' : '');
+    s.appendChild(this.el('div', 'tip',
+      'TO BE CONTINUED<br>The rest of them ran north up the dirt road.<br>Scene 2 is on its way.'));
+    s.appendChild(this.el('div', 'menu-spacer'));
+    s.appendChild(this.btn(`REPLAY SCENE ${r.mission.scene}`, 'primary', () => this.actions.startScene(r.mission.scene)));
+    s.appendChild(this.btn('STORY', '', () => this.showStory()));
+    s.appendChild(this.btn('MAIN MENU', '', () => this.showTitle()));
   }
 
   /* ---------------- play hub ---------------- */
@@ -823,20 +879,32 @@ export class UI {
   showPause() {
     const mission = this.actions.currentMission();
     const sandbox = !!(mission && mission.sandbox);
+    const story = !!(mission && mission.story);
     const fee = abandonFee(mission);
 
     const s = this.screen('dim');
     s.appendChild(this.el('div', 'game-title', 'PAUSED'));
     if (mission) {
       s.appendChild(this.el('div', 'game-sub',
-        sandbox ? `SANDBOX &mdash; ${MAP_NAMES[mission.map].toUpperCase()}` : mission.name.toUpperCase()));
+        sandbox ? `SANDBOX &mdash; ${MAP_NAMES[mission.map].toUpperCase()}`
+        : story ? `${STAGE1.name} &middot; ${mission.name.toUpperCase()}`
+        : mission.name.toUpperCase()));
     }
     s.appendChild(this.btn('RESUME', 'primary', () => this.actions.resume()));
-    s.appendChild(this.btn(sandbox ? 'RESTART RUN' : 'RESTART MISSION', '', () => this.actions.restart()));
+    s.appendChild(this.btn(sandbox ? 'RESTART RUN' : story ? 'RESTART SCENE' : 'RESTART MISSION', '', () => this.actions.restart()));
     s.appendChild(this.btn('SETTINGS', '', () => this.showSettings('pause')));
     s.appendChild(this.el('div', 'menu-spacer'));
 
-    if (sandbox) {
+    if (story) {
+      // nothing to forfeit in the story, but a scene's progress is lost
+      const b = this.btn('QUIT SCENE<span class="sub">Back to the story menu</span>', 'danger', () => {
+        if (this._confirmAbandon) { this.actions.abandonMission(); return; }
+        this._confirmAbandon = true;
+        b.innerHTML = 'TAP AGAIN TO QUIT<span class="sub">This scene starts over next time</span>';
+      });
+      this._confirmAbandon = false;
+      s.appendChild(b);
+    } else if (sandbox) {
       s.appendChild(this.btn('END SANDBOX', 'danger', () => this.actions.abandonMission()));
     } else {
       const label = fee > 0

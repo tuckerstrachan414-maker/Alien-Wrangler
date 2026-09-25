@@ -107,7 +107,7 @@ export function getMission(n) {
 // Walking out on a contract costs you: the agency keeps a cleanup fee worth a
 // quarter of the mission's base pay, and you bank nothing for the trip.
 export function abandonFee(mission) {
-  if (!mission || mission.sandbox) return 0;
+  if (!mission || mission.sandbox || mission.story) return 0;
   return Math.round(mission.pay * 0.25);
 }
 
@@ -120,6 +120,7 @@ export const MAP_LIST = [
   { id: 'shipyard', name: 'Rust Harbor Shipyard', note: 'Container maze' },
   { id: 'neighborhood', name: 'Maple Street', note: 'Night + noise meter' },
   { id: 'tropical', name: 'Isla Verde', note: 'Jungle and a volcano' },
+  { id: 'farmfields', name: 'Farm Fields', note: 'Stage 1 crash site' },
 ];
 
 export const SANDBOX_TIMES = [120, 180, 300, 600, 0];   // 0 = no time limit
