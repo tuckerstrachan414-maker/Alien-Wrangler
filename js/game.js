@@ -1,4 +1,4 @@
-import { TILE } from './data/sprites.js';
+import { TILE, flipX } from './data/sprites.js';
 import { MAP_BUILDERS } from './data/maps.js';
 import { gearEffects, ALIEN_STATS, abandonFee, WEAPONS, GADGETS } from './data/missions.js';
 import { buildNav, collide } from './nav.js';
@@ -24,6 +24,12 @@ const DIVE_CONE = Math.cos(30 * Math.PI / 180);
 
 // Field Drones Mk.II paints each tier its own arrow colour.
 const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
+
+// The van's glowing rear door: on the right as drawn (nose left), on the
+// left when a map turns it round (van.flip).
+function vanDoorOf(v) {
+  return v.flip ? { x: v.x - 4, y: v.y + 15 } : { x: v.x + 50, y: v.y + 15 };
+}
 
 export class Game {
   constructor(assets) {
@@ -102,8 +108,11 @@ export class Game {
     this.director = null;
     this.camTarget = null;      // {x,y}: camera follows this instead of the agent
     this.camEase = 0.001;       // fraction of the gap left after 1s (smaller = snappier)
+    this.hideBias = null;       // director's say in where aliens hide (entities.js)
+    this.fleeBias = null;       // ...and which way they run
+    this.view = { w: 0, h: 0 }; // buffer size of the last frame drawn
 
-    this.vanDoor = { x: this.map.van.x + 50, y: this.map.van.y + 15 };
+    this.vanDoor = vanDoorOf(this.map.van);
     this.announce(mission.announce || mission.name.toUpperCase(), 2.2);
   }
 
@@ -407,6 +416,42 @@ export class Game {
   // Aliens the UFO may take: loose, and not already under the agent's control.
   ufoCanTake(a) {
     return a.free && !a.controlled;
+  }
+
+  // Put the van somewhere else (Highway 29's follows the agent along a fire
+  // road); its body and glowing door go with it.
+  moveVan(x, y) {
+    const v = this.map.van, s = this.map.vanSolid;
+    if (s) { s.x += x - v.x; s.y += y - v.y; }
+    v.x = x; v.y = y;
+    this.vanDoor = vanDoorOf(v);
+  }
+
+  // Slide everything that moves `dx` px sideways. Highway 29 keeps a fixed
+  // canvas under an endless strip of woods: once the agent is far enough
+  // along it drops a piece off the back and slides the rest back (the map
+  // moves its own ground, props and solids), and everything out in the
+  // world slides with it, camera included, so nothing on screen jumps.
+  shiftWorld(dx) {
+    const pts = (list) => list && list.map(q => ({ ...q, x: q.x + dx }));
+    this.player.x += dx;
+    for (const a of this.aliens) {
+      a.x += dx;
+      a.path = pts(a.path);
+      a.spath = pts(a.spath);
+      if (a.script) {
+        a.script.path = pts(a.script.path);
+        if (a.script.face) a.script.face = { ...a.script.face, x: a.script.face.x + dx };
+      }
+    }
+    for (const list of [this.particles, this.popups, this.projectiles, this.deployables, this.decoys, this.shockwaves, this.rings]) {
+      for (const o of list) o.x += dx;
+    }
+    for (const z of this.zaps) z.pts = pts(z.pts);
+    if (this.ufo) this.ufo.x += dx;
+    this.vanDoor = vanDoorOf(this.map.van);
+    this.cam.x += dx;
+    if (this.camTarget) this.camTarget = { ...this.camTarget, x: this.camTarget.x + dx };
   }
 
   // Dive the way you're running. In no-buttons mode it bends onto an alien
@@ -853,6 +898,7 @@ export class Game {
   render(ctx, vw, vh) {
     const map = this.map;
     const p = this.player;
+    this.view.w = vw; this.view.h = vh;
     let camX = Math.round(Math.max(vw / 2, Math.min(map.w - vw / 2, this.cam.x)) - vw / 2);
     let camY = Math.round(Math.max(vh / 2, Math.min(map.h - vh / 2, this.cam.y)) - vh / 2);
     if (map.w < vw) camX = -((vw - map.w) / 2) | 0;
@@ -874,6 +920,8 @@ export class Game {
 
     // bait, evac beams: flat on the ground under everything
     renderGround(this, ctx, camX, camY);
+    // story scenes: whatever moves along the ground itself (a creek's current)
+    if (this.director && this.director.renderGround) this.director.renderGround(ctx, camX, camY, vw, vh);
 
     // ---- build y-sorted render list ----
     const items = [];
@@ -899,15 +947,34 @@ export class Game {
     }
     items.push({ y: p.y, kind: 'player' });
     items.push({ y: map.van.y + 28, kind: 'van' });
+    // story scenes: set pieces that move (a truck pulling out, its driver)
+    if (this.director && this.director.sceneItems) {
+      for (const it of this.director.sceneItems(camX, camY, vw, vh)) items.push({ y: it.y, kind: 'scene', draw: it.draw });
+    }
     items.sort((i1, i2) => i1.y - i2.y);
 
     for (const it of items) {
       if (it.kind === 'prop') {
-        ctx.drawImage(it.pr.img, it.pr.x - camX, it.pr.y - camY);
+        const pr = it.pr;
+        if (pr.see) {
+          // a crown the agent has walked in under thins out, so he isn't
+          // lost in a thick wood
+          const under = p.y < pr.baseY && p.x + 5 > pr.x && p.x - 5 < pr.x + pr.img.width &&
+            p.y - 16 < pr.baseY - 8 && p.y > pr.y + 4;
+          pr.fade = Math.max(0.45, Math.min(1, (pr.fade ?? 1) + (under ? -0.1 : 0.1)));
+          ctx.globalAlpha = pr.fade;
+          ctx.drawImage(pr.img, pr.x - camX, pr.y - camY);
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.drawImage(pr.img, pr.x - camX, pr.y - camY);
+        }
+      } else if (it.kind === 'scene') {
+        it.draw(ctx, camX, camY);
       } else if (it.kind === 'van') {
         const v = map.van;
         this.shadow(ctx, v.x + 23 - camX, v.y + 27 - camY, 20);
-        ctx.drawImage(this.assets.van, v.x - camX, v.y - camY);
+        const img = v.flip ? (this.vanFlipped || (this.vanFlipped = flipX(this.assets.van))) : this.assets.van;
+        ctx.drawImage(img, v.x - camX, v.y - camY);
         // deposit glow
         const pulse = 0.45 + Math.sin(this.time * 5) * 0.2;
         ctx.globalAlpha = p.carried.length ? pulse : 0.18;

@@ -55,13 +55,29 @@ no money, shop or upgrades anywhere in it: base kit only, no clock, no UFO, no p
    roof lifts so you see them scramble out of it) and melts into the trees. The agent jumps (**!?**),
    then loses his temper: stamps his feet, a vein pops, steam, a **#\*%!**, and he charges in after
    them. Cut to the edge of the woods, he plunges in behind the last two, and the scene ends.
+4. **Scene 3: Highway 29.** The agent pushes out of the undergrowth into thick woods (trees, bushes,
+   boulders, mossy logs, bracken), and they don't end. The woods keep coming in from the right however
+   far he goes, the six that got away keep slipping on east from one hiding place to the next (and run
+   that way when he flushes them), and the van follows along a fire road so there's always somewhere to
+   load them. Tree crowns thin out while he's underneath so he never gets lost under the canopy. Somewhere
+   about halfway there's a small sunny clearing with fewer trees. **Secure 3** and the woods run out:
+   the other three break cover and bolt, the trees thin to a creek, and they leap it and wait on the far
+   bank. **The agent has to jump it too.** He stops at the water's edge if he just walks up to it, and a
+   jump that comes up short puts him in the creek, so he has to climb out and try again with a run-up.
+   Then a chase through open woods: they're always just too quick, keeping their lead and bursting clear
+   if he dives. After about 15 seconds they reach **Highway 29**, turn, and one of them drops him with
+   a shock gun. Cutscene: the agent flat on the verge, crackling with electricity; across the road to a
+   gas station, where the three leap into the open back of an armoured black semi and pull the doors
+   shut; the trucker strolls out of the store with his coffee, whistling, climbs in without a clue and
+   drives off up the highway. Back to the agent, dragging himself after it on his stomach, until he puts
+   his head down in the dirt. Fade to black. No radio in this one: he's on his own out there.
 
-Scene 3 is on its way. All the story text lives in `js/data/stage1.js`.
+Scene 4 is on its way. All the story text lives in `js/data/stage1.js`.
 
 ## 📺 Menus
 
 - **STORY** — Stage 1: **PLAY STAGE 1** from the briefing, or tap a scene to jump straight into it once
-  it's open (Scene 1 after the briefing, Scene 2 once Scene 1 is cleared). Clearing a scene offers
+  it's open (Scene 1 after the briefing, each later scene once the one before is cleared). Clearing a scene offers
   **CONTINUE** straight into the next one.
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
 - **MISSION BRIEFING** — deploying on a contract opens a short classified CIA memo that types itself out
@@ -159,6 +175,9 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 
 - **Barnyard** *(Stage 1)* — a big red barn and a glass greenhouse you can walk into (their roofs fade
   away while you're inside), a stone well, bushes and a north tree line. Also playable in Sandbox.
+- **Highway 29** *(Stage 1, story only)* — endless woods that stream in as you go, a creek, open woods,
+  and a two-lane highway with a gas station across it. It's built around Scene 3's script (the woods
+  only end when the director says so), so it isn't in Sandbox.
 
 13 missions across the five maps, then endless **Overtime Shifts** (rotating every map) that keep scaling up.
 
@@ -234,11 +253,14 @@ js/intro.js         Stage 1 opening cutscene: satellite replay, pull-back to the
 js/director.js      shared story-scene director: objective panel, hints, Voss's radio, markers, cutscene letterbox
 js/tutorial.js      Stage 1 Scene 1 director: tutorial steps, hints, radio, the stampede cutscene
 js/barnyard.js      Stage 1 Scene 2 director: arrival, secure 6, the run for the tree line
+js/highway.js       Stage 1 Scene 3 director: the endless hunt, the van on the fire road, the creek, the chase, the shock gun, the getaway
 js/terrain.js       dithered fades between ground textures + smooth painted roads
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/storyArt.js story art: Handler Voss, the alien cruiser + pods, 3x5 pixel font
 js/data/barnyardArt.js  Scene 2 art: walk-in barn + greenhouse (roof shell + cutaway), nest wall, well, barn clutter, floor decals
-js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines (both scenes)
+js/data/highwayArt.js   Scene 3 art: woods props, the semi, the trucker, a car, gas station + store, the agent's crawl, ground painters
+js/data/highwayStrip.js Scene 3 streaming world: lays out and paints the woods a piece at a time from world coordinates, slides the canvas along
+js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines (every scene)
 js/data/maps.js     the seven maps, and walk-in buildings (MapBuilder.building)
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
 js/save.js          localStorage save (progress + settings + sandbox loadout)

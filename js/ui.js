@@ -17,6 +17,7 @@ const MAP_NAMES = {
   tropical: 'Isla Verde',
   farmfields: 'Farm Fields',
   barnyard: 'Barnyard',
+  highway29: 'Highway 29',
 };
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
@@ -93,7 +94,8 @@ export class UI {
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
 
     s.appendChild(this.bigBtn('STORY',
-      save.story.scenesCleared >= 2 ? 'Stage 1 &mdash; the barnyard'
+      save.story.scenesCleared >= 3 ? 'Stage 1 &mdash; Highway 29'
+        : save.story.scenesCleared >= 2 ? 'Stage 1 &mdash; the barnyard'
         : save.story.scenesCleared ? 'Stage 1 &mdash; the crash site' : 'Stage 1 &mdash; start here',
       'primary', () => this.showStory()));
     s.appendChild(this.bigBtn('PLAY', 'Contracts &amp; equipment', '', () => this.showPlay()));

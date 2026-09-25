@@ -565,7 +565,8 @@ export class Alien {
       case 'scripted': {
         // a story cutscene is running it along a set route (Stage 1's
         // stampede down the road): no collision, hops anything low, and
-        // it's gone ('fled') once it runs off the end of the route
+        // it's gone ('fled') once it runs off the end of the route, unless
+        // it's to `hold` there (and wait, facing `face`)
         const s = this.script;
         if (s.wait > 0) {
           s.wait -= dt;
@@ -575,6 +576,7 @@ export class Alien {
         }
         while (s.i < s.path.length && Math.hypot(s.path[s.i].x - this.x, s.path[s.i].y - this.y) < 8) s.i++;
         const wp = s.path[s.i];
+        if (!wp && s.hold) { s.wait = 1e9; break; }
         if (!wp) { this.state = 'fled'; this.vx = 0; this.vy = 0; break; }
         this.accelToward(wp.x - this.x, wp.y - this.y, s.speed, 900, dt);
         this.x += this.vx * dt; this.y += this.vy * dt;
@@ -622,7 +624,10 @@ export class Alien {
       const moved = Math.hypot(c.x - px, c.y - py);
       const awayDot = (dx * (this.x - p.x) + dy * (this.y - p.y)) / Math.max(1, distP);
       const inertia = (dx * this.vx + dy * this.vy) / Math.max(20, Math.hypot(this.vx, this.vy));
-      const score = awayDot * 2 + inertia * 0.6 - moved * 0.4 + Math.random() * 0.3;
+      // a story scene can lean every getaway one way (Highway 29: on along the woods)
+      const fb = game.fleeBias;
+      const lean = fb ? (dx * fb.x + dy * fb.y) * fb.w : 0;
+      const score = awayDot * 2 + inertia * 0.6 - moved * 0.4 + lean + Math.random() * 0.3;
       if (score > bestScore) { bestScore = score; best = { x: dx, y: dy }; }
     }
     return best || { x: this.x - p.x, y: this.y - p.y };
@@ -636,7 +641,13 @@ export class Alien {
       if (dP < 120) continue;
       const dA = Math.hypot(s.x - this.x, s.y - this.y);
       if (dA > this.stats.hideSeekR * 2.6) continue;
-      const score = dP * 1.1 - dA * 1.0 + Math.random() * 40;
+      let score = dP * 1.1 - dA * 1.0 + Math.random() * 40;
+      // a story scene can steer where they go to ground, or rule a spot out (null)
+      if (game.hideBias) {
+        const b = game.hideBias(this, s, p);
+        if (b === null) continue;
+        score += b;
+      }
       if (score > bestScore) { bestScore = score; best = s; }
     }
     if (best) {

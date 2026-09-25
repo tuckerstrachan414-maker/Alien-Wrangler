@@ -14,10 +14,11 @@ import { STAGE1, stage1Scene } from './data/stage1.js';
 import { Intro } from './intro.js';
 import { Tutorial } from './tutorial.js';
 import { BarnyardScene } from './barnyard.js';
+import { HighwayScene } from './highway.js';
 import { sfx } from './audio.js';
 
 // Who runs each Stage 1 scene (objectives, radio, cutscenes).
-const SCENE_DIRECTORS = { 1: Tutorial, 2: BarnyardScene };
+const SCENE_DIRECTORS = { 1: Tutorial, 2: BarnyardScene, 3: HighwayScene };
 
 loadSave();
 setupInput();
