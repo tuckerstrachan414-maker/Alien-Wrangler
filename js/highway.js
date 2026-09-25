@@ -31,7 +31,7 @@ import { TILE } from './data/sprites.js';
 import { StoryDirector } from './director.js';
 import { OBJECTIVES3, HINTS3, GLOW3 } from './data/stage1.js';
 import { buildHighwayActors } from './data/highwayArt.js';
-import { CW, THK, FN, FS, CREEK_HW, STATION, FINAL_W, SPIRAL } from './data/highwayStrip.js';
+import { CW, NP, THK, FN, FS, CREEK_HW, STATION, FINAL_W, SPIRAL } from './data/highwayStrip.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -241,7 +241,14 @@ export class HighwayScene extends StoryDirector {
     let spots = g.hideSpots.filter(s => s.x > lo && s.x < hi && clear(s));
     if (!spots.length) spots = g.hideSpots.filter(s => s.x > p.x + 60 && clear(s)).sort((q, r) => q.x - r.x).slice(0, 4);
     const s = spots[Math.floor(Math.random() * spots.length)];
-    if (!s) return;
+    if (!s) {
+      // nowhere free to hide just now: it's off ahead of him, still looking
+      a.state = 'running';
+      a.x = lo + 20; a.y = clamp(a.y, FN + 40, FS - 60);
+      a.vx = 0; a.vy = 0; a.z = 0; a.zv = 0;
+      a.targetSpot = null; a.path = null; a.repathT = 0; a.chase = -3;
+      return;
+    }
     a.state = 'hiding';
     a.hideSpot = s; a.x = s.x; a.y = s.y;
     a.vx = 0; a.vy = 0; a.z = 0; a.zv = 0;
@@ -318,7 +325,7 @@ export class HighwayScene extends StoryDirector {
     this.herd(dt);
 
     // about halfway: a clearing comes through the trees
-    if (!this.clearingQueued && (g.captured >= 1 || strip.ox / CW + 7 >= 10)) {
+    if (!this.clearingQueued && (g.captured >= 1 || strip.ox / CW + NP >= 10)) {
       this.clearingQueued = true;
       strip.queue.push('clearing');
     }
@@ -402,11 +409,12 @@ export class HighwayScene extends StoryDirector {
     if (cs.phase === 'bolt') {
       // over to where they're running, then back to him
       const on = this.runners.filter(a => a.popped);
-      if (cs.t > 0.7 && on.length) {
+      if (cs.t > 0.45 && on.length) {
+        // ride along with the pack as they tear off through the trees
         const cx = on.reduce((s, a) => s + a.x, 0) / on.length;
         const cy = on.reduce((s, a) => s + a.y, 0) / on.length;
-        g.camTarget = { x: Math.min(cx, p.x + Math.max(220, this.viewW() * 0.42)), y: (p.y + cy) / 2 };
-        g.camEase = 0.05;
+        g.camTarget = { x: cx + 20, y: cy };
+        g.camEase = 0.03;
       }
       if (cs.t > 2.9) {
         cs.phase = 'startle'; cs.pt = 0;
@@ -662,7 +670,9 @@ export class HighwayScene extends StoryDirector {
     for (const a of this.runners) {
       a.script = { path: [], i: 0, speed: 0, wait: 1e9, face: { x: p.x, y: p.y }, hold: true };
     }
+    // whatever he was doing (mid-jump, face down after a dive), he's on his feet
     this.skid = { vx: p.vx, vy: p.vy };
+    p.state = 'normal';
     p.moving = false; p.sprinting = false;
     this.cs = { t: 0, phase: 'turn', pt: 0, lb: 0, fade: 0 };
   }
@@ -679,7 +689,7 @@ export class HighwayScene extends StoryDirector {
     // he skids to a stop
     this.skid.vx *= Math.pow(0.004, dt); this.skid.vy *= Math.pow(0.004, dt);
     p.x += this.skid.vx * dt; p.y += this.skid.vy * dt;
-    p.walkT += dt * 4;
+    this.integrateZ(p, dt);
     for (const a of this.runners) a.script.face = { x: p.x, y: p.y };
     if (cs.phase === 'turn') {
       if (cs.pt > 0.35 && !this.gunOut) { this.gunOut = true; sfx.click(); }
@@ -791,9 +801,10 @@ export class HighwayScene extends StoryDirector {
           b.delay -= dt;
           if (b.delay <= 0) {
             // leap in the back
+            // a low leap, up into the doorway and gone into the dark
             b.jumping = true;
-            a.zv = 150; a.z = 0.1;
-            a.script = { path: [{ x: b.at.x, y: semi.base - 12 }], i: 0, speed: 60, wait: 0, face: null, hold: true };
+            a.zv = 95; a.z = 0.1;
+            a.script = { path: [{ x: b.at.x, y: semi.base - 12 }], i: 0, speed: 95, wait: 0, face: null, hold: true };
             sfx.jump();
           }
         }
