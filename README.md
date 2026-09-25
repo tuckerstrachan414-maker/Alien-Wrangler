@@ -45,6 +45,8 @@ no money, shop or upgrades anywhere in it: base kit only, no clock, no UFO, no p
    you do a double-take (**! ! !**) and give chase, and the scene ends.
 
 Scene 2 picks up from the road (coming soon). All the story text lives in `js/data/stage1.js`.
+Every new cutscene, story scene and map has to meet the bar Stage 1 set: see
+[`docs/QUALITY_BAR.md`](docs/QUALITY_BAR.md).
 
 ## 📺 Menus
 
