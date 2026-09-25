@@ -18,6 +18,10 @@ const DEFAULT = {
     time: 180,             // seconds, or 0 for no time limit
     gear: {},
   },
+  story: {                 // Stage 1 (tutorial) progress
+    introSeen: false,      // watched (or skipped) the opening briefing
+    scenesCleared: 0,      // highest scene of Stage 1 finished
+  },
 };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -37,6 +41,11 @@ function normalize() {
     aliens: { ...DEFAULT.sandbox.aliens, ...(sb.aliens || {}) },
     time: typeof sb.time === 'number' ? sb.time : DEFAULT.sandbox.time,
     gear: { ...(sb.gear || {}) },
+  };
+  const st = (save.story && typeof save.story === 'object') ? save.story : {};
+  save.story = {
+    introSeen: st.introSeen === true,
+    scenesCleared: Number.isFinite(st.scenesCleared) ? Math.max(0, Math.floor(st.scenesCleared)) : 0,
   };
   if (!save.gear || typeof save.gear !== 'object') save.gear = {};
   save.loadout = Array.isArray(save.loadout) ? save.loadout.filter(id => typeof id === 'string').slice(0, 2) : [];

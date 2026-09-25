@@ -237,8 +237,10 @@ export class Alien {
     this.r = 4;
     this.z = 0; this.zv = 0;
     // hiding | running | attack | netted | stunned | lured | reeled | hypno |
-    // carried | airlift | deposited | beaming | escaped
+    // carried | airlift | deposited | beaming | escaped |
+    // scripted | fled (story cutscenes)
     this.state = 'hiding';
+    this.script = null;          // scripted: { path, i, speed, wait, face }
     this.stateT = 0;
     this.hideSpot = spot;
     this.facing = 'down';
@@ -556,6 +558,28 @@ export class Alien {
       case 'beaming': {
         // locked in the beam, rising
         this.vx = 0; this.vy = 0;
+        break;
+      }
+
+      case 'scripted': {
+        // a story cutscene is running it along a set route (Stage 1's
+        // stampede down the road): no collision, hops anything low, and
+        // it's gone ('fled') once it runs off the end of the route
+        const s = this.script;
+        if (s.wait > 0) {
+          s.wait -= dt;
+          this.vx *= 0.8; this.vy *= 0.8;
+          if (s.face) this.facing = faceFrom(s.face.x - this.x, s.face.y - this.y);
+          break;
+        }
+        while (s.i < s.path.length && Math.hypot(s.path[s.i].x - this.x, s.path[s.i].y - this.y) < 8) s.i++;
+        const wp = s.path[s.i];
+        if (!wp) { this.state = 'fled'; this.vx = 0; this.vy = 0; break; }
+        this.accelToward(wp.x - this.x, wp.y - this.y, s.speed, 900, dt);
+        this.x += this.vx * dt; this.y += this.vy * dt;
+        if (this.z === 0 && overlapsJumpable(map, this.x, this.y, this.r + 2)) { this.zv = 95; this.z = 0.1; }
+        this.facing = faceFrom(this.vx, this.vy);
+        this.walkT += dt * 12;
         break;
       }
     }

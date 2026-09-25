@@ -169,7 +169,7 @@ function wireIntel(paper, m, assets) {
 }
 
 // 26x26 pixel agency seal: ring, star field and a tiny saucer.
-function drawSeal(cv) {
+export function drawSeal(cv) {
   if (!cv) return;
   const x = cv.getContext('2d');
   const px = (a, b, w, h, c) => { x.fillStyle = c; x.fillRect(a, b, w, h); };

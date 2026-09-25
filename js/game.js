@@ -12,8 +12,10 @@ import {
   renderGround, renderTop, drawCage, snoreCloud,
 } from './weapons.js';
 import { DecoyAgent } from './decoy.js';
+import { blendGround } from './terrain.js';
 
 const DEPOSIT_R = 30;
+const ACTIONS = ['jump', 'dash', 'dive', 'grab', 'gadget1', 'gadget2'];
 
 // Dive aim assist (no-buttons mode): the dive goes the way you're running,
 // bent onto an alien inside this reach and cone of that direction.
@@ -48,6 +50,8 @@ export class Game {
     for (let ty = 0; ty < this.map.th; ty++)
       for (let tx = 0; tx < this.map.tw; tx++)
         g.drawImage(this.assets.tiles[this.map.ground[ty * this.map.tw + tx]], tx * TILE, ty * TILE);
+    if (this.map.blend) blendGround(g, this.map, this.assets.tiles);
+    if (this.map.paintGround) this.map.paintGround(g, this.assets.tiles);
 
     this.player = new Player(this.map.spawn.x, this.map.spawn.y, this.fx);
     this.aliens = [];
@@ -91,9 +95,21 @@ export class Game {
     this.homes = this.map.homes || [];
     for (const h of this.homes) h.alertT = 0;
     this.volcanoT = 0;
+    this.smokeT = 0;
+
+    // Story scenes hand the mission to a director (tutorial.js) that can
+    // take the controls for a cutscene. main.js attaches it after this.
+    this.director = null;
+    this.camTarget = null;      // {x,y}: camera follows this instead of the agent
+    this.camEase = 0.001;       // fraction of the gap left after 1s (smaller = snappier)
 
     this.vanDoor = { x: this.map.van.x + 50, y: this.map.van.y + 15 };
-    this.announce(mission.name.toUpperCase(), 2.2);
+    this.announce(mission.announce || mission.name.toUpperCase(), 2.2);
+  }
+
+  // Tell the director (if any) that something happened.
+  emit(evt, data) {
+    if (this.director) this.director.on(evt, data);
   }
 
   spawnAliens(counts) {
@@ -124,11 +140,13 @@ export class Game {
   onAlienFlushed(a) {
     sfx.squeak();
     this.popup(a.x, a.y - 16, '!', '#ffd75e');
+    this.emit('flush', a);
   }
 
   onAlienAttack(a) {
     sfx.alert();
     this.popup(a.x, a.y - 16, '!!', '#ff5e6c');
+    this.emit('attack', a);
   }
 
   rustle(a) {
@@ -187,6 +205,7 @@ export class Game {
       al.y = this.player.y + (Math.random() - 0.5) * 24;
       this.popup(al.x, al.y - 14, 'BROKE FREE', '#ff9e5e');
     }
+    this.emit('hit', { dropped: dropped.length });
   }
 
   popup(x, y, text, color) {
@@ -221,6 +240,7 @@ export class Game {
     this.puff(a.x, a.y, '#59d98c');
     this.popup(a.x, a.y - 16, 'GOT ONE!', '#59d98c');
     if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+    this.emit('grab', a);
     return true;
   }
 
@@ -376,6 +396,7 @@ export class Game {
     this.captured++;
     if (!this.mission.sandbox) save.totalCaptured++;
     if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+    this.emit('secure', a);
   }
 
   // Aliens the UFO may take: loose, and not already under the agent's control.
@@ -400,7 +421,7 @@ export class Game {
         if (d < bestD) { bestD = d; aim = { x: ax / d, y: ay / d }; }
       }
     }
-    if (p.tryDive(aim)) sfx.dive();
+    if (p.tryDive(aim)) { sfx.dive(); this.emit('dive'); }
   }
 
   // No-buttons mode has no GRAB control: touching a loose alien with your
@@ -431,27 +452,39 @@ export class Game {
     if (!this.running) return;
     this.time += dt;
     const p = this.player;
+    // a director cutscene has the controls: swallow the player's input
+    const locked = !!(this.director && this.director.locked);
 
     // actions
-    if (consumePress('jump')) { if (p.tryJump()) sfx.jump(); }
-    if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); if (this.stealth) this.noisePulse(p.x, p.y, 18); } }
-    if (consumePress('dive')) this.diveAction();
-    if (consumePress('grab')) this.grabAttempt();
-    if (consumePress('gadget1')) this.useGadget(0);
-    if (consumePress('gadget2')) this.useGadget(1);
+    if (locked) {
+      for (const a of ACTIONS) consumePress(a);
+    } else {
+      if (consumePress('jump')) { if (p.tryJump()) { sfx.jump(); this.emit('jump'); } }
+      if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); if (this.stealth) this.noisePulse(p.x, p.y, 18); this.emit('dash'); } }
+      if (consumePress('dive')) this.diveAction();
+      if (consumePress('grab')) this.grabAttempt();
+      if (consumePress('gadget1')) this.useGadget(0);
+      if (consumePress('gadget2')) this.useGadget(1);
+    }
 
     const gestures = getControlMode() === 'gestures';
-    if (gestures) this.autoGrab();
+    if (gestures && !locked) this.autoGrab();
 
     const wasDiving = p.state === 'diving';
-    p.update(dt, this.map, input);
+    // the director can walk the agent itself (scripted run) or just feed it
+    // a stick direction; otherwise it's the player's input
+    if (!(locked && this.director.ownsPlayer)) {
+      p.update(dt, this.map, locked ? this.director.moveInput : input);
+    }
     if (wasDiving && p.state === 'prone') {
       sfx.thud(); this.puff(p.x, p.y, '#8a6a45');
       if (this.stealth) this.noisePulse(p.x, p.y, 26);
+      this.emit('diveMiss');
     }
 
     if (this.stealth) this.updateStealth(dt);
     if (this.map.volcano) this.updateVolcano(dt);
+    if (this.map.smoke.length) this.updateSmoke(dt);
 
     // dive capture sweep
     if (p.state === 'diving') {
@@ -571,10 +604,15 @@ export class Game {
     this.msgT -= dt;
     this.shake = Math.max(0, this.shake - dt * 12);
 
-    // camera
-    const lerp = 1 - Math.pow(0.001, dt);
-    this.cam.x += (p.x - this.cam.x) * lerp;
-    this.cam.y += (p.y - this.cam.y) * lerp;
+    // the director runs its script after the world has moved
+    if (this.director) this.director.update(dt);
+    if (!this.running) return;
+
+    // camera: the agent, or whatever a cutscene is looking at
+    const focus = this.camTarget || p;
+    const lerp = 1 - Math.pow(this.camTarget ? this.camEase : 0.001, dt);
+    this.cam.x += (focus.x - this.cam.x) * lerp;
+    this.cam.y += (focus.y - this.cam.y) * lerp;
 
     // button cooldown UI
     setButtonCooling('btn-dash', p.dashCd > 0 || p.stamina < 18);
@@ -589,7 +627,8 @@ export class Game {
     setButtonCooling('hint-dash', p.dashCd > 0 || p.stamina < 18 || !p.canAct);
     setButtonCooling('hint-sprint', input.edgeSpent || p.stamina <= 1);
 
-    // mission end?
+    // mission end? (a story scene's director decides that for itself)
+    if (this.director) return;
     const loose = this.aliens.filter(a => a.free || a.state === 'beaming' || a.state === 'airlift');
     if (this.phase === 'beam' && loose.length === 0) {
       if (p.carried.length > 0) {
@@ -719,6 +758,34 @@ export class Game {
     });
   }
 
+  // Thin grey columns drifting up off the crashed pods.
+  updateSmoke(dt) {
+    this.smokeT += dt;
+    if (this.smokeT < 0.18) return;
+    this.smokeT = 0;
+    for (const s of this.map.smoke) {
+      if (Math.random() < 0.45) continue;
+      this.particles.push({
+        x: s.x + (Math.random() - 0.5) * 4, y: s.y,
+        vx: 3 + (Math.random() - 0.5) * 5, vy: -12 - Math.random() * 7,
+        grav: -3, life: 1.9, t: 1.9,
+        color: Math.random() < 0.35 ? '#6e6a70' : '#a8a4a8', size: Math.random() < 0.5 ? 2 : 1,
+      });
+    }
+  }
+
+  // A story scene is over (the director calls this). No pay, no deductions:
+  // just what happened, for the story results screen.
+  finishStory(extra = {}) {
+    if (!this.running) return;
+    this.running = false;
+    const results = {
+      mission: this.mission, story: true, captured: this.captured,
+      total: this.totalAliens, cleared: true, abandoned: false, ...extra,
+    };
+    if (this.onEnd) this.onEnd(results);
+  }
+
   // pay = base minus escaped aliens and noise fines (both cost escapeCost)
   projectedPay() {
     const m = this.mission;
@@ -785,9 +852,14 @@ export class Game {
 
     // ---- build y-sorted render list ----
     const items = [];
-    for (const pr of map.props) items.push({ y: pr.baseY, kind: 'prop', pr });
+    for (const pr of map.props) {
+      // off-screen props (a big map is mostly trees and crop rows) are skipped
+      const img = pr.img;
+      if (pr.x - camX > vw || pr.x + img.width - camX < 0 || pr.y - camY > vh || pr.baseY - camY < 0) continue;
+      items.push({ y: pr.baseY, kind: 'prop', pr });
+    }
     for (const a of this.aliens) {
-      if (a.state === 'carried' || a.state === 'deposited' || a.state === 'escaped') continue;
+      if (a.state === 'carried' || a.state === 'deposited' || a.state === 'escaped' || a.state === 'fled') continue;
       if (a.state === 'hiding') {
         if (a.revealT > 0) items.push({ y: a.y + 6, kind: 'hidden', a });   // Noise Maker ping
         continue;
@@ -917,6 +989,9 @@ export class Game {
     }
     ctx.globalAlpha = 1;
 
+    // story scenes: objective markers, the agent's "!!!", etc.
+    if (this.director) this.director.renderWorld(ctx, camX, camY, vw, vh);
+
     // edge arrows: carrying -> van; drones -> loose aliens; endgame -> everyone
     if (p.carried.length) this.edgeArrow(ctx, vw, vh, camX, camY, this.vanDoor.x, this.vanDoor.y, '#59d98c');
     const endgame = !this.mission.endless && (this.timer < 25 || this.beamPhase);
@@ -952,6 +1027,9 @@ export class Game {
 
     // stealth suspicion meter (screen space, top-centre)
     if (this.stealth) this.drawSuspicion(ctx, vw);
+
+    // cutscene letterbox / fades sit over everything
+    if (this.director) this.director.renderScreen(ctx, vw, vh);
 
     ctx.textAlign = 'left';
   }
