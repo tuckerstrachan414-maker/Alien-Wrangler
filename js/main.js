@@ -135,7 +135,25 @@ function measureInsets() {
     bottom: Math.ceil(safe('Bottom') * k) + 2,
     left: Math.ceil(safe('Left') * k) + 2,
   };
+  // where captured-alien icons fly to (centre of the HUD pill's icon)
+  const at = (id) => {
+    const el = document.getElementById(id);
+    const r = el && el.getBoundingClientRect();
+    return r && r.width ? { x: (r.left + r.width / 2) * k, y: (r.top + r.height / 2) * k } : null;
+  };
+  game.hudTargets = { score: at('ico-alien'), cash: at('ico-coin') };
 }
+
+// HUD pills bounce when an icon lands on them, and the pay pill shakes red
+// when an alien gets away.
+game.onHudPing = (kind) => {
+  const el = document.getElementById(kind === 'score' ? 'hud-score' : 'hud-cash');
+  if (!el) return;
+  const cls = kind === 'loss' ? 'loss' : 'bump';
+  el.classList.remove('bump', 'loss');
+  void el.offsetWidth;   // restart the animation
+  el.classList.add(cls);
+};
 afterResize = measureInsets;
 
 function enterMission(mission) {

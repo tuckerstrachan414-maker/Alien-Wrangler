@@ -33,7 +33,8 @@ the map at the same zoom).
   The personnel file shows your agent, clearance, record, field stats, your two gadget slots (tap a slot to
   change it, or SWAP) and your other tools.
   Tap the report to skip the typing, **GEAR UP** to visit the shop and come back, **BEGIN OP** to deploy.
-- **SETTINGS** — sound on/off, SFX volume, control scheme, gesture hints, and save data.
+- **SETTINGS** — sound on/off, SFX volume, **shake & flash** (camera shake, screen flashes and impact
+  freeze-frames, for anyone who wants a calmer screen), control scheme, gesture hints, and save data.
 - **SANDBOX** — free play. Pick any map, any alien roster, any time limit (including **no limit**,
   so the UFO never comes) and any gear level, with everything unlocked. Nothing is paid out and
   nothing is written to your save — it's for testing and messing around.
@@ -163,6 +164,25 @@ Ideas still on the table:
 - **Cardboard Box**: crouch disguise; hidden aliens don't flush while you wear it
 - **Roller Shoes**: hold sprint downhill… everywhere
 
+## ✨ Game feel
+
+Every action and gadget has its own effects:
+
+- **Agent**: dust on takeoff and landing, squash & stretch, afterimage trails on dashes, dives and hook-zips,
+  skid marks, footstep dust while sprinting, a swipe arc when a grab misses, and a white-hot impact
+  star plus a few frozen frames (hit-stop) on every catch. Getting stunned throws sparks and a red edge flash.
+- **Aliens**: leaves, corn or rust fly out of whatever they were hiding in, helmets spin off and bounce,
+  Scouts leave afterimages when they panic-dash, Elites shimmer as the cloak flickers on or off, frozen aliens
+  glint and shatter out of the ice, nets tear and cages break apart when the hold runs out, and the
+  hypnotized conga line hums little music notes.
+- **Gadgets**: muzzle flash and recoil on every shot, glowing bolts with trails, a net that spins open in
+  flight, a chain-link grapple line, lingering electric crackle after a zap, frost left on the ground, a
+  ketchup splat where the Bait Burger lands, and rotor-wash dust under the courier drone.
+- **Mission**: the van rocks and confetti flies when aliens are locked in, and each one's icon flies up
+  to the HUD counter, which bounces. The pay pill shakes red when one escapes. A red edge pulse at the
+  30-second warning and on each of the last ten seconds, a cyan flash when the UFO arrives, energy
+  gathering under the tractor beam, embers from the volcano. Gadget buttons flash when they've reloaded.
+
 ## 🛠️ Dev notes
 
 Pure HTML5 canvas + ES modules. No build step, no dependencies, no external network —
@@ -178,6 +198,7 @@ index.html          shell + HUD + touch controls
 css/style.css       layout, safe-area insets (Dynamic Island / home indicator aware)
 js/main.js          boot, game loop, integer-scaled low-res renderer
 js/game.js          mission controller, capture/deposit, UFO beam, rendering
+js/juice.js         game feel: particles, afterimages, ground marks, flashes, hit-stop, HUD fly-ups
 js/entities.js      player movement + alien AI (hide / run / attack)
 js/nav.js           nav grid, BFS pathfinding, collision
 js/input.js         joystick + buttons, split-screen gesture scheme, keyboard fallback

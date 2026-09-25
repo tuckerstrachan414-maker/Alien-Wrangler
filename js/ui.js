@@ -525,6 +525,12 @@ export class UI {
     volRow.appendChild(volCtl);
     s.appendChild(volRow);
 
+    /* ---- display ---- */
+    s.appendChild(this.el('div', 'section-label', 'DISPLAY'));
+
+    s.appendChild(this.optRow('SHAKE &amp; FLASH', 'Camera shake, screen flashes and impact freeze-frames. Particles stay on either way',
+      this.toggle(() => save.screenFx, () => { save.screenFx = !save.screenFx; persist(); })));
+
     /* ---- controls ---- */
     s.appendChild(this.el('div', 'section-label', 'CONTROLS'));
 

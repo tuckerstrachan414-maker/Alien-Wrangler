@@ -514,10 +514,18 @@ export function setupInput() {
 const coolState = new Map();
 
 export function setButtonCooling(id, cooling) {
-  if (coolState.get(id) === cooling) return;
+  const was = coolState.get(id);
+  if (was === cooling) return;
   coolState.set(id, cooling);
   const el = document.getElementById(id);
-  if (el) el.classList.toggle('cooling', cooling);
+  if (!el) return;
+  el.classList.toggle('cooling', cooling);
+  // reloaded: a quick bright flash so you know it's ready without looking
+  if (was && !cooling) {
+    el.classList.remove('ready');
+    void el.offsetWidth;
+    el.classList.add('ready');
+  }
 }
 
 // Equipped gadgets (GEAR entries, slot order). Buttons mode gets one button

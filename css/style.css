@@ -139,6 +139,20 @@ html, body {
 .hud-ico canvas { height: 12px; width: auto; }
 #hud-timer.urgent { color: var(--danger); animation: blink 0.6s steps(2) infinite; }
 #hud-cash { color: var(--cash); margin-left: auto; }
+/* an icon just landed on it / an alien got away */
+.hud-pill.bump { animation: pill-bump 0.3s steps(5); }
+.hud-pill.loss { animation: pill-loss 0.45s steps(6); }
+@keyframes pill-bump {
+  0%   { transform: scale(1.28); filter: brightness(1.8); }
+  100% { transform: scale(1);    filter: brightness(1); }
+}
+@keyframes pill-loss {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); color: var(--danger); }
+  40% { transform: translateX(3px);  color: var(--danger); }
+  60% { transform: translateX(-2px); color: var(--danger); }
+  80% { transform: translateX(2px); }
+}
 .hud-btn {
   pointer-events: auto;
   color: var(--ink);
@@ -301,6 +315,15 @@ html, body {
     #2f4a6e;
 }
 .act-btn.cooling { opacity: 0.4; }
+/* reloaded: a bright pop so you know it's ready without looking */
+.act-btn.ready, .ghint.ready { animation: btn-ready 0.35s steps(5); }
+@keyframes btn-ready {
+  0%   { filter: brightness(2.4); transform: scale(1.12); }
+  100% { filter: brightness(1);   transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .act-btn.ready, .ghint.ready, .hud-pill.bump, .hud-pill.loss { animation: none; }
+}
 .act-btn.toggle.active { color: #fff; }
 .act-btn.toggle.active::before {
   background:

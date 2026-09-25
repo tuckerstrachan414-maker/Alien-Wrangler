@@ -80,6 +80,8 @@ export const sfx = {
   fail:    () => { tone(220, 0.25, 'sawtooth', 0.1, -80); tone(160, 0.35, 'sawtooth', 0.1, -60, 0.2); },
   win:     () => { [440, 550, 660, 880].forEach((f, i) => tone(f, 0.14, 'square', 0.09, 0, i * 0.09)); },
   click:   () => tone(600, 0.04, 'square', 0.05),
+  // an icon landing on a HUD pill
+  tick:    () => tone(1500 + Math.random() * 300, 0.035, 'square', 0.025, 400),
   ufo:     () => { tone(60, 1.2, 'sawtooth', 0.07, 30); tone(48, 1.2, 'sawtooth', 0.05, 20, 0.05); },
   // Noise Maker: sharp crack, a chest-thump, then a faint ear-ring
   bang:    () => {

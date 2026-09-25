@@ -459,6 +459,7 @@ export class Alien {
           this.cornerCd = 4;
           this.stunned(1.4);
           game.popup(this.x, this.y - 16, 'CORNERED!', '#ffb07a');
+          game.juice.cornered(this);
           break;
         }
         // pressure builds while the agent (or a decoy) is close
@@ -507,6 +508,7 @@ export class Alien {
           this.dashCd = 2.2;
           this.zv = 90; this.z = 0.1;
           game.puff(this.x, this.y, '#cfe6ff');
+          game.juice.alienDash(this);
         }
 
         this.accelToward(tx, ty, (distT < 130 ? st.sprint : st.run) * slow, st.accel, dt);

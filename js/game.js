@@ -12,6 +12,7 @@ import {
   renderGround, renderTop, drawCage, snoreCloud,
 } from './weapons.js';
 import { DecoyAgent } from './decoy.js';
+import { Juice } from './juice.js';
 
 const DEPOSIT_R = 30;
 
@@ -28,6 +29,7 @@ export class Game {
     this.assets = assets;   // { tiles, actors:{player,aliens}, van, ufo }
     this.onEnd = null;      // set by ui
     this.running = false;
+    this.juice = new Juice(this);   // particles, flashes, hit-stop: all the feel
   }
 
   startMission(mission) {
@@ -69,7 +71,7 @@ export class Game {
     this.cam = { x: this.player.x, y: this.player.y };
     this.shake = 0;
     this.msg = null; this.msgT = 0;
-    this.flash = 0;             // Noise Maker white-out (seconds left)
+    this.vanBump = 0;           // van hop when aliens are locked in
     this.fullNagT = -9;         // last auto-grab "HANDS FULL" popup
     this.shockwaves = [];       // Noise Maker blast rings
     this.decoys = [];           // Decoy Agents out hunting
@@ -93,6 +95,7 @@ export class Game {
     this.volcanoT = 0;
 
     this.vanDoor = { x: this.map.van.x + 50, y: this.map.van.y + 15 };
+    this.juice.reset();
     this.announce(mission.name.toUpperCase(), 2.2);
   }
 
@@ -124,11 +127,13 @@ export class Game {
   onAlienFlushed(a) {
     sfx.squeak();
     this.popup(a.x, a.y - 16, '!', '#ffd75e');
+    this.juice.flushed(a);
   }
 
   onAlienAttack(a) {
     sfx.alert();
     this.popup(a.x, a.y - 16, '!!', '#ff5e6c');
+    this.juice.alienAttack(a);
   }
 
   rustle(a) {
@@ -142,17 +147,19 @@ export class Game {
   }
 
   puff(x, y, color = '#c8c8d0') {
-    for (let i = 0; i < 6; i++) {
-      const a = Math.random() * Math.PI * 2;
-      this.particles.push({
-        x, y: y - 2, vx: Math.cos(a) * 26, vy: Math.sin(a) * 16 - 6,
-        life: 0.4, t: 0.4, color, size: 1,
+    for (let i = 0; i < 8; i++) {
+      const a = Math.random() * Math.PI * 2, s = 18 + Math.random() * 18;
+      this.juice.add({
+        x, y: y - 2, vx: Math.cos(a) * s, vy: Math.sin(a) * s * 0.6 - 8,
+        life: 0.35 + Math.random() * 0.2, color: i % 3 ? color : '#ffffff',
+        size: i % 3 ? 1 : 2, drag: 3, grav: -10, shrink: true,
       });
     }
   }
 
   spawnBolt(a, dx, dy) {
     sfx.bolt();
+    this.juice.boltFire(a, dx, dy);
     this.projectiles.push({ type: 'bolt', x: a.x, y: a.y - 6, vx: dx * 155, vy: dy * 155, life: 1.5 });
   }
 
@@ -162,6 +169,7 @@ export class Game {
       // Riot Shield: the hit never lands; a tackler bounces off seeing stars
       // (long enough to grab it)
       sfx.block();
+      this.juice.shieldBlock(p, source, false);
       this.popup(p.x, p.y - 20, 'BLOCKED', '#7fe3ff');
       if (source) {
         source.stunned(2);
@@ -187,6 +195,7 @@ export class Game {
       al.y = this.player.y + (Math.random() - 0.5) * 24;
       this.popup(al.x, al.y - 14, 'BROKE FREE', '#ff9e5e');
     }
+    this.juice.playerStunned(p, dropped);
   }
 
   popup(x, y, text, color) {
@@ -207,6 +216,7 @@ export class Game {
       sfx.thud();
       this.shake = 3;
       this.puff(a.x, a.y, '#9aa7b5');
+      this.juice.helmetOff(a, this.player);
       this.popup(a.x, a.y - 16, 'ARMOR OFF!', '#9fc7e8');
       return true; // counts as a hit (dive won't knock you prone)
     }
@@ -214,12 +224,15 @@ export class Game {
       this.popup(this.player.x, this.player.y - 20, 'HANDS FULL', '#ff9e5e');
       return false;
     }
+    const wasBeaming = a.state === 'beaming';
     a.state = 'carried';
     a.cloaked = false;
     this.player.carried.push(a);
     sfx.grab();
     this.puff(a.x, a.y, '#59d98c');
     this.popup(a.x, a.y - 16, 'GOT ONE!', '#59d98c');
+    this.juice.grabHit(a, viaDive);
+    if (wasBeaming) this.juice.snatched(a);
     if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
     return true;
   }
@@ -236,7 +249,7 @@ export class Game {
         if (this.tryCapture(a)) { hit = true; break; }
       }
     }
-    if (!hit) this.puff(gp.x, gp.y, '#8fa0c4');
+    if (!hit) { this.puff(gp.x, gp.y, '#8fa0c4'); this.juice.whiff(gp, p.dir); }
   }
 
   // Fire the gadget in loadout slot 0 / 1. An empty slot 1 falls back to a
@@ -299,6 +312,7 @@ export class Game {
       d.dir = { x: p.dir.x, y: p.dir.y };
       this.decoys.push(d);
       this.puff(pos.x, pos.y, '#ffb07a');
+      this.juice.decoyInflate(d);
     }
     this.popup(p.x, p.y - 24, T.count > 1 ? 'DECOY SQUAD!' : 'DECOY OUT!', '#ffb07a');
   }
@@ -307,12 +321,15 @@ export class Game {
     if (d.dead) return;
     if (d.shieldT > 0) {
       sfx.block();
+      this.juice.shieldBlock(d, src, false);
       if (src) { src.stunned(1.2); this.popup(src.x, src.y - 16, 'BOUNCED!', '#7fe3ff'); }
       return;
     }
     d.hp--;
     sfx.thud();
     this.puff(d.x, d.y - 4, '#ffb07a');
+    this.juice.squash(d, 1.3, 0.7);
+    this.juice.star(d.x, d.y - 8, '#ffb07a', 6);
     if (d.hp <= 0) this.popDecoy(d, true);
     else this.popup(d.x, d.y - 20, `${d.hp} HP`, '#ffb07a');
   }
@@ -329,7 +346,8 @@ export class Game {
         life: 0.5, t: 0.5, color: i % 2 ? '#ffb07a' : '#2a2f45', size: 1,
       });
     }
-    if (loudly) this.popup(d.x, d.y - 20, 'POP!', '#ffb07a');
+    if (loudly) { this.popup(d.x, d.y - 20, 'POP!', '#ffb07a'); this.juice.decoyPop(d); }
+    else this.juice.burst(d.x, d.y - 8, ['#ffe0cc', '#ffffff'], 8, 30, 0.5, { grav: -15, shrink: true, size: [1, 2] });
   }
 
   // Grapple Hook: a reeled-in alien reached the agent — straight into your hands.
@@ -346,7 +364,9 @@ export class Game {
   // A stun bolt hit a Riot Shield: Mk.I soaks it, Mk.II+ sends it back.
   shieldBolt(user, pr) {
     sfx.block();
-    if (WEAPONS.shield[user.shieldLv] && WEAPONS.shield[user.shieldLv].reflect) {
+    const reflect = !!(WEAPONS.shield[user.shieldLv] && WEAPONS.shield[user.shieldLv].reflect);
+    this.juice.shieldBlock(user, { x: pr.x, y: pr.y + 4 }, reflect);
+    if (reflect) {
       pr.type = 'rbolt';
       pr.vx *= -1.15; pr.vy *= -1.15;
       pr.life = 1.2;
@@ -375,7 +395,23 @@ export class Game {
     a.bait = null;
     this.captured++;
     if (!this.mission.sandbox) save.totalCaptured++;
+    this.juice.toHud(this.vanDoor.x, this.vanDoor.y - 10, 'score', '#59d98c');
     if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+  }
+
+  // Something flew into a wall: sparks, net strands, a puff of dust.
+  projectileSplat(pr, at) {
+    const J = this.juice;
+    if (pr.type === 'bolt' || pr.type === 'rbolt') {
+      J.sparks(at.x, at.y, ['#41f0d8', '#e8f6ff'], 7, 80, 0.2, { x: -pr.vx, y: -pr.vy }, 2.4);
+      J.star(at.x, at.y, '#41f0d8', 4, 0.1);
+    } else if (pr.type === 'net') {
+      J.burst(at.x, at.y, ['#ffd75e', '#c9a93a'], 8, 40, 0.4, { shape: 'streak', grav: 80 });
+    } else if (pr.type === 'dart') {
+      J.sparks(at.x, at.y, ['#ffffff', '#c9a8ff'], 4, 50, 0.15, { x: -pr.vx, y: -pr.vy }, 2);
+    } else if (pr.type === 'hook') {
+      J.hookWall(at.x, at.y, pr.vx, pr.vy);
+    }
   }
 
   // Aliens the UFO may take: loose, and not already under the agent's control.
@@ -400,7 +436,7 @@ export class Game {
         if (d < bestD) { bestD = d; aim = { x: ax / d, y: ay / d }; }
       }
     }
-    if (p.tryDive(aim)) sfx.dive();
+    if (p.tryDive(aim)) { sfx.dive(); this.juice.dive(p); }
   }
 
   // No-buttons mode has no GRAB control: touching a loose alien with your
@@ -429,12 +465,18 @@ export class Game {
 
   update(dt) {
     if (!this.running) return;
+    // hit-stop: a few frozen frames sell a big impact (inputs stay queued)
+    if (this.juice.stopT > 0) {
+      this.juice.stopT -= dt;
+      this.shake = Math.max(0, this.shake - dt * 12);
+      return;
+    }
     this.time += dt;
     const p = this.player;
 
     // actions
-    if (consumePress('jump')) { if (p.tryJump()) sfx.jump(); }
-    if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); if (this.stealth) this.noisePulse(p.x, p.y, 18); } }
+    if (consumePress('jump')) { if (p.tryJump()) { sfx.jump(); this.juice.jump(p); } }
+    if (consumePress('dash')) { if (p.tryDash()) { sfx.dash(); this.puff(p.x, p.y); this.juice.dash(p); if (this.stealth) this.noisePulse(p.x, p.y, 18); } }
     if (consumePress('dive')) this.diveAction();
     if (consumePress('grab')) this.grabAttempt();
     if (consumePress('gadget1')) this.useGadget(0);
@@ -446,7 +488,7 @@ export class Game {
     const wasDiving = p.state === 'diving';
     p.update(dt, this.map, input);
     if (wasDiving && p.state === 'prone') {
-      sfx.thud(); this.puff(p.x, p.y, '#8a6a45');
+      sfx.thud(); this.puff(p.x, p.y, '#8a6a45'); this.juice.bellyFlop(p);
       if (this.stealth) this.noisePulse(p.x, p.y, 26);
     }
 
@@ -503,6 +545,7 @@ export class Game {
             a.cloaked = false;
             this.popup(a.x, a.y - 16, 'PINNED!', '#ffd75e');
             this.puff(a.x, a.y, '#ffd75e');
+            this.juice.netHit(a);
             pr.life = 0;
             break;
           }
@@ -513,7 +556,7 @@ export class Game {
       // walls stop projectiles
       if (pr.life <= 0) continue;
       const c = collide(this.map, pr.x, pr.y, 2, true);
-      if (c.x !== pr.x || c.y !== pr.y) { projectileWall(this, pr, c); pr.life = 0; }
+      if (c.x !== pr.x || c.y !== pr.y) { this.projectileSplat(pr, c); projectileWall(this, pr, c); pr.life = 0; }
     }
     this.projectiles = this.projectiles.filter(pr => pr.life > 0);
 
@@ -533,6 +576,7 @@ export class Game {
       sfx.deposit(); sfx.cash();
       this.popup(this.vanDoor.x, this.vanDoor.y - 24, `+${secured} SECURED`, '#59d98c');
       this.puff(this.vanDoor.x, this.vanDoor.y - 8, '#59d98c');
+      this.juice.secured(this.vanDoor.x, this.vanDoor.y, secured);
     }
 
     // mission clock (sandbox runs with no time limit never call the UFO in)
@@ -552,12 +596,8 @@ export class Game {
 
     if (this.phase === 'beam') this.updateUfo(dt);
 
-    // particles + popups
-    for (const pt of this.particles) {
-      pt.x += pt.vx * dt; pt.y += pt.vy * dt; pt.t -= dt;
-      pt.vy += (pt.grav ?? 20) * dt;
-    }
-    this.particles = this.particles.filter(pt => pt.t > 0);
+    // particles, afterimages, flashes + popups
+    this.juice.update(dt);
     for (const r of this.rings) { r.r += r.spd * dt; r.t -= dt; }
     this.rings = this.rings.filter(r => r.t > 0);
     for (const w of this.shockwaves) {
@@ -565,7 +605,6 @@ export class Game {
       w.r = 4 + (w.max - 4) * (1 - Math.pow(Math.max(0, w.t / w.life), 2.2));
     }
     this.shockwaves = this.shockwaves.filter(w => w.t > 0);
-    this.flash = Math.max(0, this.flash - dt);
     for (const pp of this.popups) { pp.y -= 14 * dt; pp.t -= dt; }
     this.popups = this.popups.filter(pp => pp.t > 0);
     this.msgT -= dt;
@@ -648,6 +687,8 @@ export class Game {
         this.escaped++;
         sfx.escape();
         this.popup(t.x, t.y - 40, 'ESCAPED', '#ff5e6c');
+        this.juice.escaped(t, u);
+        if (this.onHudPing) this.onHudPing('loss');
         u.state = 'pick';
       }
     } else if (u.state === 'leave') {
@@ -765,14 +806,21 @@ export class Game {
     let camY = Math.round(Math.max(vh / 2, Math.min(map.h - vh / 2, this.cam.y)) - vh / 2);
     if (map.w < vw) camX = -((vw - map.w) / 2) | 0;
     if (map.h < vh) camY = -((vh - map.h) / 2) | 0;
-    if (this.shake > 0.3) {
-      camX += Math.round((Math.random() - 0.5) * this.shake);
-      camY += Math.round((Math.random() - 0.5) * this.shake);
+    const J = this.juice;
+    if (J.full) {
+      if (this.shake > 0.3) {
+        camX += Math.round((Math.random() - 0.5) * this.shake);
+        camY += Math.round((Math.random() - 0.5) * this.shake);
+      }
+      camX += Math.round(J.kx); camY += Math.round(J.ky);
     }
 
     ctx.fillStyle = '#0a0c14';
     ctx.fillRect(0, 0, vw, vh);
     ctx.drawImage(this.groundCv, -camX, -camY);
+
+    // scorch marks, frost, skids, ketchup
+    J.renderDecals(ctx, camX, camY);
 
     // night tint (neighbourhood): dark blue wash over the ground
     if (map.tint === 'night') {
@@ -782,6 +830,9 @@ export class Game {
 
     // bait, evac beams: flat on the ground under everything
     renderGround(this, ctx, camX, camY);
+
+    // dash / dive / zip afterimages trail under the actors
+    J.renderGhosts(ctx, camX, camY);
 
     // ---- build y-sorted render list ----
     const items = [];
@@ -806,7 +857,9 @@ export class Game {
       } else if (it.kind === 'van') {
         const v = map.van;
         this.shadow(ctx, v.x + 23 - camX, v.y + 27 - camY, 20);
-        ctx.drawImage(this.assets.van, v.x - camX, v.y - camY);
+        // the van rocks on its springs as aliens get thrown in the back
+        const hop = this.vanBump > 0 ? Math.round(Math.sin(this.vanBump / 0.3 * Math.PI * 2) * 1.5) : 0;
+        ctx.drawImage(this.assets.van, v.x - camX, v.y - camY - Math.abs(hop));
         // deposit glow
         const pulse = 0.45 + Math.sin(this.time * 5) * 0.2;
         ctx.globalAlpha = p.carried.length ? pulse : 0.18;
@@ -859,13 +912,19 @@ export class Game {
       }
     }
 
-    // Noise Maker blast rings
+    // blast rings (Noise Maker, impacts, shield pops...)
     for (const w of this.shockwaves) {
-      ctx.globalAlpha = Math.max(0, w.t / w.life) * 0.8;
-      ctx.strokeStyle = w.col;
-      ctx.lineWidth = 1;
+      const k = Math.max(0, w.t / w.life);
       ctx.beginPath();
       ctx.ellipse(Math.round(w.x - camX), Math.round(w.y - camY), w.r, w.r * 0.55, 0, 0, Math.PI * 2);
+      if (w.fill) {
+        ctx.globalAlpha = k * w.fill;
+        ctx.fillStyle = w.col;
+        ctx.fill();
+      }
+      ctx.globalAlpha = k * 0.8;
+      ctx.strokeStyle = w.col;
+      ctx.lineWidth = w.lw ? Math.max(1, Math.round(w.lw * k + 0.4)) : 1;
       ctx.stroke();
     }
     ctx.globalAlpha = 1;
@@ -881,39 +940,54 @@ export class Game {
 
     // projectiles
     for (const pr of this.projectiles) {
+      const x = Math.round(pr.x - camX), y = Math.round(pr.y - camY);
       if (pr.type === 'bolt') {
+        // glowing plasma bolt, flickering
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35 + 0.15 * Math.sin(this.time * 40);
         ctx.fillStyle = '#41f0d8';
-        ctx.fillRect(Math.round(pr.x - 2 - camX), Math.round(pr.y - 2 - camY), 4, 4);
+        ctx.fillRect(x - 3, y - 3, 7, 7);
+        ctx.globalAlpha = 1;
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = '#41f0d8';
+        ctx.fillRect(x - 2, y - 2, 4, 4);
         ctx.fillStyle = '#e8f6ff';
-        ctx.fillRect(Math.round(pr.x - 1 - camX), Math.round(pr.y - 1 - camY), 2, 2);
+        ctx.fillRect(x - 1, y - 1, 2, 2);
       } else if (pr.type === 'net') {
+        // the net spins and opens up as it flies, weights at the corners
+        const open = Math.min(1, (pr.age || 0) / 0.15);
+        const r = 2 + open * 3.5, spin = (pr.age || 0) * 14;
+        const c = [];
+        for (let i = 0; i < 4; i++) c.push({ x: x + Math.cos(spin + i * Math.PI / 2) * r, y: y + Math.sin(spin + i * Math.PI / 2) * r });
         ctx.strokeStyle = '#ffd75e';
         ctx.lineWidth = 1;
-        ctx.strokeRect(Math.round(pr.x - 4 - camX), Math.round(pr.y - 4 - camY), 8, 8);
         ctx.beginPath();
-        ctx.moveTo(pr.x - 4 - camX, pr.y - camY); ctx.lineTo(pr.x + 4 - camX, pr.y - camY);
-        ctx.moveTo(pr.x - camX, pr.y - 4 - camY); ctx.lineTo(pr.x - camX, pr.y + 4 - camY);
+        ctx.moveTo(c[0].x, c[0].y);
+        for (let i = 1; i <= 4; i++) ctx.lineTo(c[i % 4].x, c[i % 4].y);
+        ctx.moveTo(c[0].x, c[0].y); ctx.lineTo(c[2].x, c[2].y);
+        ctx.moveTo(c[1].x, c[1].y); ctx.lineTo(c[3].x, c[3].y);
         ctx.stroke();
+        ctx.fillStyle = '#8a7a3a';
+        for (const k of c) ctx.fillRect(Math.round(k.x) - 1, Math.round(k.y) - 1, 2, 2);
       }
     }
 
-    // particles
-    for (const pt of this.particles) {
-      ctx.globalAlpha = Math.max(0, pt.t / pt.life);
-      ctx.fillStyle = pt.color;
-      ctx.fillRect(Math.round(pt.x - camX), Math.round(pt.y - camY), pt.size, pt.size);
-    }
-    ctx.globalAlpha = 1;
+    // particles, impact stars, swipes
+    J.renderParticles(ctx, camX, camY);
+    J.renderMarks(ctx, camX, camY);
 
-    // popups
-    ctx.font = 'bold 7px monospace';
+    // popups: punch in big, settle, float up and fade
     ctx.textAlign = 'center';
     for (const pp of this.popups) {
+      const age = pp.life - pp.t;
+      const size = age < 0.12 ? 7 + Math.round(3 * (1 - age / 0.12)) : 7;
+      ctx.font = `bold ${size}px monospace`;
       ctx.globalAlpha = Math.min(1, pp.t / (pp.life * 0.5));
+      const x = Math.round(pp.x - camX), y = Math.round(pp.y - camY);
       ctx.fillStyle = '#14141e';
-      ctx.fillText(pp.text, Math.round(pp.x - camX) + 1, Math.round(pp.y - camY) + 1);
-      ctx.fillStyle = pp.color;
-      ctx.fillText(pp.text, Math.round(pp.x - camX), Math.round(pp.y - camY));
+      ctx.fillText(pp.text, x + 1, y + 1);
+      ctx.fillStyle = age < 0.06 ? '#ffffff' : pp.color;
+      ctx.fillText(pp.text, x, y);
     }
     ctx.globalAlpha = 1;
 
@@ -931,13 +1005,8 @@ export class Game {
     }
     for (const d of this.decoys) this.edgeArrow(ctx, vw, vh, camX, camY, d.x, d.y, '#ffb07a');
 
-    // Noise Maker white-out
-    if (this.flash > 0) {
-      ctx.globalAlpha = Math.min(0.55, this.flash * 2.2);
-      ctx.fillStyle = '#fff6e0';
-      ctx.fillRect(0, 0, vw, vh);
-      ctx.globalAlpha = 1;
-    }
+    // screen flashes, edge vignette, icons flying up to the HUD
+    J.renderScreen(ctx, vw, vh, camX, camY);
 
     // announcement
     if (this.msgT > 0 && this.msg) {
@@ -988,6 +1057,18 @@ export class Game {
     ctx.globalAlpha = 1;
   }
 
+  // Squash & stretch round the feet (juice.squash sets sqx / sqy).
+  squashed(ctx, e, fx, fy, draw) {
+    const sx = e.sqx ?? 1, sy = e.sqy ?? 1;
+    if (Math.abs(sx - 1) < 0.04 && Math.abs(sy - 1) < 0.04) { draw(); return; }
+    ctx.save();
+    ctx.translate(fx, fy);
+    ctx.scale(sx, sy);
+    ctx.translate(-fx, -fy);
+    draw();
+    ctx.restore();
+  }
+
   drawWalking(ctx, img, x, y, walkT, moving) {
     // split legs (bottom 4 rows) and alternate their offset for a step cycle
     const w = img.width, h = img.height;
@@ -1023,7 +1104,8 @@ export class Game {
     } else {
       const img = A[p.facing] || A.down;
       const lift = Math.round(p.z);
-      this.drawWalking(ctx, img, x - 6, y - 15 - lift, p.walkT, p.moving && p.z === 0);
+      this.squashed(ctx, p, x, y - lift, () =>
+        this.drawWalking(ctx, img, x - 6, y - 15 - lift, p.walkT, p.moving && p.z === 0));
       // carried aliens stacked overhead
       let stackY = y - 27 - lift + Math.round(Math.sin(this.time * 8) * 1);
       for (const a of p.carried) {
@@ -1033,9 +1115,6 @@ export class Game {
       }
       if (p.state === 'stunned') this.drawStars(ctx, x, y - 20 - lift);
       if (p.shieldT > 0) this.drawShield(ctx, p, x, y - lift);
-      if (p.sprinting && Math.random() < 0.3) {
-        this.particles.push({ x: p.x - p.dir.x * 6, y: p.y, vx: -p.dir.x * 10, vy: -4, life: 0.3, t: 0.3, color: '#c8c8d0', size: 1 });
-      }
     }
   }
 
@@ -1052,7 +1131,8 @@ export class Game {
     ctx.globalAlpha = alpha;
     const img = set[a.facing] || set.down;
     const moving = Math.hypot(a.vx, a.vy) > 12;
-    this.drawWalking(ctx, img, x - 5, y - 11 - lift, a.walkT, moving && a.z === 0);
+    this.squashed(ctx, a, x, y - lift, () =>
+      this.drawWalking(ctx, img, x - 5, y - 11 - lift, a.walkT, moving && a.z === 0));
     ctx.globalAlpha = 1;
 
     if (a.state === 'stunned' && a.look === 'ice') {
@@ -1074,6 +1154,13 @@ export class Game {
         ctx.fillStyle = i % 2 ? '#e08bff' : '#ffffff';
         ctx.fillRect(Math.round(x + Math.cos(ang) * 3) - 1, Math.round(y - 17 - lift + Math.sin(ang) * 1.5), 2, 1);
       }
+    }
+    if (a.drowsyT > 0) {
+      // the tranq dart still stuck in its side
+      ctx.fillStyle = '#d7dfea';
+      ctx.fillRect(x - 6, y - 8 - lift, 2, 1);
+      ctx.fillStyle = '#c9a8ff';
+      ctx.fillRect(x - 7, y - 9 - lift, 1, 1);
     }
     if (a.drowsyT > 0 && Math.floor(this.time * 4) % 2) {
       ctx.fillStyle = '#c9a8ff';
@@ -1127,7 +1214,7 @@ export class Game {
   // Riot Shield bubble (blinks as it runs out)
   drawShield(ctx, u, x, y) {
     if (u.shieldT < 1 && Math.floor(this.time * 12) % 2) return;
-    const pulse = 0.35 + 0.15 * Math.sin(this.time * 8);
+    const pulse = u.shieldHitT > 0 ? 0.75 : 0.35 + 0.15 * Math.sin(this.time * 8);
     ctx.globalAlpha = pulse;
     ctx.fillStyle = '#7fe3ff';
     ctx.beginPath();
@@ -1161,7 +1248,7 @@ export class Game {
     this.shadow(ctx, x, y, 12);
     const img = this.decoySprites[d.facing] || this.decoySprites.down;
     const wob = Math.round(Math.sin(this.time * 9 + d.wob) * 1);
-    this.drawWalking(ctx, img, x - 6 + wob, y - 15, d.walkT, d.moving);
+    this.squashed(ctx, d, x, y, () => this.drawWalking(ctx, img, x - 6 + wob, y - 15, d.walkT, d.moving));
     // air valve
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(x + 4 + wob, y - 15, 1, 1);

@@ -70,6 +70,7 @@ function fireNet(game, user, lv) {
   user.cd.netgun = T.cd;
   sfx.net();
   const { dir } = aimAssist(game, user, 130, 22, a => a.grabbable && a.z < 16, 210);
+  game.juice.muzzle(user, '#ffd75e', 5, dir);
   const base = Math.atan2(dir.y, dir.x);
   // Mk.III scatter net: three nets fanned out around the aim
   for (const off of T.nets > 1 ? [-15, 0, 15] : [0]) {
@@ -95,7 +96,8 @@ function detonateNoise(game, user, lv) {
   sfx.bang();
   const agent = !user.isDecoy;
   game.shake = agent ? 8 : 4;
-  if (agent) game.flash = 0.28;
+  if (agent) game.juice.flash('#fff6e0', 0.55, 0.28);
+  game.juice.noiseBlast(user, nm, agent);
   game.shockwaves.push({ x: user.x, y: user.y, r: 4, max: nm.stunR, t: 0.45, life: 0.45, col: '#ffffff' });
   game.shockwaves.push({ x: user.x, y: user.y, r: 4, max: nm.pingR, t: 0.8, life: 0.8, col: '#41f0d8' });
   burst(game, user.x, user.y - 4, ['#fff6c8', '#ffd75e'], 16, 80);
@@ -170,12 +172,14 @@ function shock(game, a, T, k, user) {
     if (a.helmet) {
       a.helmet = false;
       game.puff(a.x, a.y, '#9aa7b5');
+      game.juice.helmetOff(a, user);
       game.popup(a.x, a.y - 22, 'ARMOR FRIED!', '#9fc7e8');
     } else {
       game.popup(a.x, a.y - 22, 'DOUBLE ZAP!', '#e8fbff');
     }
   }
   burst(game, a.x, a.y - 6, ['#9fe8ff', '#ffffff'], 6, 50, 0.3);
+  game.juice.zapHit(a, k > 1);
 }
 
 function fireZap(game, user, lv) {
@@ -190,9 +194,14 @@ function fireZap(game, user, lv) {
     // nothing in reach: the prongs fizzle out halfway, and a miss only
     // takes a quick re-arm, not the full reload
     user.cd.stungun = Math.min(user.cd.stungun, 1);
-    game.zaps.push({ pts: [{ x: ox, y: oy }, { x: ox + dir.x * T.range * 0.5, y: oy + dir.y * T.range * 0.5 }], t: 0.2, life: 0.2 });
+    const end = { x: ox + dir.x * T.range * 0.5, y: oy + dir.y * T.range * 0.5 };
+    game.zaps.push({ pts: [{ x: ox, y: oy }, end], t: 0.2, life: 0.2 });
+    game.juice.muzzle(user, '#9fe8ff', 3, dir);
+    game.juice.zapFizzle(end);
     return true;
   }
+  game.juice.muzzle(user, '#9fe8ff', 5, dir);
+  if (!user.isDecoy) game.juice.flash('#9fe8ff', 0.1, 0.08);
   // Chain: from each struck alien, jump to the nearest fresh one in reach.
   const seq = [target];
   while (seq.length < 1 + T.chain) {
@@ -229,6 +238,7 @@ function fireDart(game, user, lv) {
   sfx.dart();                                  // silent on the noise meter
   const sp = 340;
   const { dir } = aimAssist(game, user, T.range, 18, targetable, sp);
+  game.juice.muzzle(user, '#e8dcff', 2, dir);
   game.projectiles.push({
     type: 'dart', x: user.x + dir.x * 8, y: user.y - 4 + dir.y * 8,
     vx: dir.x * sp, vy: dir.y * sp, life: T.range / sp, lv,
@@ -245,8 +255,10 @@ function dartHit(game, pr) {
     if (a.helmet && !T.pierce) {
       sfx.block();
       game.popup(a.x, a.y - 16, 'PLINK!', '#9aa7b5');
+      game.juice.dartPlink(a, pr);
       return;
     }
+    game.juice.dartHit(a);
     a.drowsyT = T.drowsy;
     a.sleepFor = T.sleep;
     a.snoreR = T.snore;
@@ -281,6 +293,7 @@ function fireBait(game, user, lv, opts = {}) {
   if (!T || !ready(user, 'bait')) return false;
   user.cd.bait = T.cd;
   sfx.toss();
+  game.juice.squash(user, 0.85, 1.15);
   const tx = opts.at ? opts.at.x : user.x + user.dir.x * 70;
   const ty = opts.at ? opts.at.y : user.y + user.dir.y * 70;
   game.projectiles.push({
@@ -296,6 +309,7 @@ function landBait(game, pr) {
   const T = WEAPONS.bait[pr.lv];
   game.deployables.push({ kind: 'bait', x: pos.x, y: pos.y, t: T.t, life: T.t, T, owner: pr.owner });
   game.puff(pos.x, pos.y, '#e0a050');
+  game.juice.baitLand(pos.x, pos.y);
 }
 
 function updateBait(game, b, dt) {
@@ -347,6 +361,7 @@ function fireCage(game, user, lv, opts = {}) {
   sfx.cage();
   game.deployables.push({ kind: 'cage', x: pos.x, y: pos.y, armT: 0.6, held: null, T, owner: user, courierT: 0 });
   game.popup(pos.x, pos.y - 14, 'CAGE SET', '#ffb35e');
+  game.juice.cageSet(pos.x, pos.y);
   return true;
 }
 
@@ -366,6 +381,7 @@ function updateCage(game, c, dt) {
       a.cloaked = false;
       sfx.cage();
       game.popup(a.x, a.y - 18, 'CAGED!', '#ffb35e');
+      game.juice.cageSnap(c, a);
       return;
     }
     return;
@@ -384,6 +400,7 @@ function updateCage(game, c, dt) {
     game.deployables.push({ kind: 'courier', a, x: c.x, y: c.y, lift: 0 });
     sfx.evac();
     game.popup(a.x, a.y - 18, 'AIRLIFT!', '#59d98c');
+    game.juice.courierLift(c.x, c.y);
   }
 }
 
@@ -401,9 +418,13 @@ function updateCourier(game, d, dt) {
       sfx.deposit();
       game.popup(v.x, v.y - 24, '+1 AIRLIFTED', '#59d98c');
       game.puff(v.x, v.y - 8, '#59d98c');
+      game.juice.secured(v.x, v.y, 1);
       return;
     }
     d.x += dx / len * sp; d.y += dy / len * sp;
+  } else if (Math.random() < 0.5) {
+    // rotor wash kicking up dust as it lifts off
+    game.juice.dust(d.x, d.y, 1, 30, { life: 0.6 });
   }
   a.x = d.x; a.y = d.y; a.riseZ = d.lift;
 }
@@ -421,6 +442,7 @@ function fireHook(game, user, lv) {
   loud(game, user, 6);
   const sp = 380;
   const { dir } = aimAssist(game, user, T.range, 20, hookable(T), sp);
+  game.juice.muzzle(user, '#d7dfea', 3, dir);
   game.projectiles.push({
     type: 'hook', x: user.x + dir.x * 6, y: user.y - 4 + dir.y * 6,
     vx: dir.x * sp, vy: dir.y * sp, life: T.range / sp, lv, owner: user, hits: [],
@@ -433,7 +455,9 @@ function reel(game, a, owner) {
     a.riseZ = 0;
     if (game.ufo && game.ufo.target === a) game.ufo.state = 'pick';
     game.popup(a.x, a.y - 20, 'SNATCHED!', '#59d98c');
+    game.juice.snatched(a);
   }
+  game.juice.hookHit(a);
   a.cage = null;
   a.bait = null;
   a.state = 'reeled';
@@ -479,6 +503,7 @@ function hookWall(game, pr, at) {
   if (game.player.zipTo(at.x - pr.vx / d * 7, at.y + 4 - pr.vy / d * 7)) {
     sfx.reel();
     game.popup(game.player.x, game.player.y - 20, 'ZIP!', '#d7dfea');
+    game.juice.zip(game.player);
   }
 }
 
@@ -504,6 +529,7 @@ function fireShield(game, user, lv) {
   user.shieldLv = lv;
   sfx.shield();
   game.popup(user.x, user.y - 24, 'SHIELD UP', '#7fe3ff');
+  game.juice.shieldUp(user);
   return true;
 }
 
@@ -522,6 +548,7 @@ function shieldBash(game, user) {
     sfx.thud();
     game.shake = Math.max(game.shake, 3);
     game.popup(a.x, a.y - 16, 'BASH!', '#7fe3ff');
+    game.juice.shieldBash(a, user);
   }
 }
 
@@ -534,6 +561,7 @@ function freeze(game, a, T) {
   if (T.shatter && a.helmet) {
     a.helmet = false;
     game.puff(a.x, a.y, '#bfefff');
+    game.juice.iceShatter(a);
     game.popup(a.x, a.y - 16, 'SHATTER!', '#bfefff');
   } else {
     game.popup(a.x, a.y - 16, 'FROZEN!', '#bfefff');
@@ -553,6 +581,7 @@ function fireCryo(game, user, lv) {
     // Mk.III blizzard: a freezing ring all the way round
     game.shockwaves.push({ x: user.x, y: user.y, r: 4, max: T.range, t: 0.5, life: 0.5, col: '#bfefff' });
     burst(game, user.x, user.y - 4, ['#bfefff', '#ffffff', '#7fd0ff'], 26, T.range * 1.4, 0.55);
+    game.juice.cryoNova(user, T);
     for (const a of game.aliens) if (targetable(a) && dist(a, user) <= T.range) { freeze(game, a, T); froze++; }
     refund();
     return true;
@@ -560,6 +589,7 @@ function fireCryo(game, user, lv) {
   const { dir } = aimAssist(game, user, T.range, 40);
   const cone = Math.cos(T.cone * DEG);
   const base = Math.atan2(dir.y, dir.x);
+  game.juice.cryoSpray(user, dir, T);
   for (let i = 0; i < 22; i++) {
     const ang = base + (Math.random() - 0.5) * 2 * T.cone * DEG;
     const s = T.range * (1.2 + Math.random() * 0.6);
@@ -613,6 +643,7 @@ function fireHypno(game, user, lv) {
     .sort((a, b) => dist(a, user) - dist(b, user))
     .slice(0, T.max);
   const from = { x: user.x + dir.x * 6, y: user.y - 6 + dir.y * 6 };
+  game.juice.muzzle(user, '#e08bff', 4, dir);
   if (!picks.length) {
     game.zaps.push({ pts: [from, { x: from.x + dir.x * T.range * 0.6, y: from.y + dir.y * T.range * 0.6 }], t: 0.3, life: 0.3, style: 'hypno' });
     return true;
@@ -656,11 +687,15 @@ function fireEvac(game, user, lv) {
     const carried = p.carried.includes(a);
     const x = carried ? p.x : a.x, y = carried ? p.y : a.y;
     game.deployables.push({ kind: 'beam', x, y, t: 0.7, life: 0.7 });
+    game.juice.evac(x, y);
     game.secureAlien(a);
   }
   p.carried.length = 0;
   const v = game.vanDoor;
   game.deployables.push({ kind: 'beam', x: v.x, y: v.y, t: 0.9, life: 0.9 });
+  game.juice.evac(v.x, v.y);
+  game.juice.secured(v.x, v.y, list.length);
+  game.juice.flash('#8cffbe', 0.2, 0.2);
   game.popup(p.x, p.y - 26, `+${list.length} EVAC'D`, '#59d98c');
   game.popup(v.x, v.y - 24, `+${list.length} SECURED`, '#59d98c');
   sfx.cash();
@@ -757,6 +792,7 @@ export function updateProjectile(game, pr, dt) {
       if (!targetable(a) || Math.hypot(a.x - pr.x, a.y - 4 - pr.y) >= 8) continue;
       a.stunned(2);
       game.popup(a.x, a.y - 16, 'REFLECTED!', '#7fe3ff');
+      game.juice.zapHit(a, false);
       pr.life = 0;
       break;
     }
@@ -869,6 +905,16 @@ export function drawCage(game, ctx, c, camX, camY) {
   px(ctx, x - 7, y + 2, Math.round(14 * k), 2, '#ffb35e');
 }
 
+// Grapple line: alternating light / dark links, crawling when reeling in.
+function chain(ctx, x0, y0, x1, y1, crawl = 0) {
+  const d = Math.hypot(x1 - x0, y1 - y0);
+  const n = Math.max(1, Math.round(d / 2));
+  for (let i = 0; i <= n; i++) {
+    const k = i / n;
+    px(ctx, x0 + (x1 - x0) * k, y0 + (y1 - y0) * k, 1, 1, (i + Math.floor(crawl)) % 3 ? '#9aa7b5' : '#e8f0ff');
+  }
+}
+
 function jagged(ctx, pts, amp, col, w) {
   ctx.strokeStyle = col;
   ctx.lineWidth = w;
@@ -893,12 +939,7 @@ export function renderTop(game, ctx, camX, camY) {
   for (const a of game.aliens) {
     if (a.state !== 'reeled') continue;
     const o = a.reelTo || game.player;
-    ctx.strokeStyle = '#d7dfea';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(Math.round(o.x - camX), Math.round(o.y - 6 - camY));
-    ctx.lineTo(Math.round(a.x - camX), Math.round(a.y - 6 - camY));
-    ctx.stroke();
+    chain(ctx, o.x - camX, o.y - 6 - camY, a.x - camX, a.y - 6 - camY, game.time * 40);
   }
 
   for (const z of game.zaps) {
@@ -933,14 +974,14 @@ export function renderTop(game, ctx, camX, camY) {
       px(ctx, tx - 1, ty - 1, 2, 2, '#c9a8ff');
     } else if (pr.type === 'hook') {
       const o = pr.owner;
-      ctx.strokeStyle = '#9aa7b5';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(Math.round(o.x - camX), Math.round(o.y - 6 - camY));
-      ctx.lineTo(x, y);
-      ctx.stroke();
+      chain(ctx, o.x - camX, o.y - 6 - camY, x, y);
+      // three-pronged grapple, pointing the way it flies
+      const d = Math.hypot(pr.vx, pr.vy) || 1, ux = pr.vx / d, uy = pr.vy / d;
       px(ctx, x - 2, y - 2, 4, 4, '#d7dfea');
       px(ctx, x - 1, y - 1, 2, 2, '#5a6577');
+      px(ctx, x + ux * 3 - uy * 3, y + uy * 3 + ux * 3, 1, 1, '#ffffff');
+      px(ctx, x + ux * 3 + uy * 3, y + uy * 3 - ux * 3, 1, 1, '#ffffff');
+      px(ctx, x + ux * 4, y + uy * 4, 1, 1, '#ffffff');
     } else if (pr.type === 'rbolt') {
       px(ctx, x - 2, y - 2, 4, 4, '#7fe3ff');
       px(ctx, x - 1, y - 1, 2, 2, '#ffffff');

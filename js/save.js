@@ -12,6 +12,7 @@ const DEFAULT = {
   sfxVolume: 100,          // 0..100 master SFX level
   controlMode: 'buttons',  // 'buttons' | 'gestures'
   gestureHints: true,      // show the gesture legend in no-buttons mode
+  screenFx: true,          // camera shake, flashes and impact freeze-frames
   sandbox: {               // free-play loadout, remembered between sessions
     map: 'playground',
     aliens: { grunt: 2, scout: 1, trooper: 0, elite: 0 },
@@ -31,6 +32,7 @@ function normalize() {
   save.sfxVolume = Math.max(0, Math.min(100, Math.round(save.sfxVolume / 25) * 25));
   if (save.controlMode !== 'gestures') save.controlMode = 'buttons';
   save.gestureHints = save.gestureHints !== false;
+  save.screenFx = save.screenFx !== false;
   const sb = (save.sandbox && typeof save.sandbox === 'object') ? save.sandbox : {};
   save.sandbox = {
     map: typeof sb.map === 'string' ? sb.map : DEFAULT.sandbox.map,
