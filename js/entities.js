@@ -34,6 +34,7 @@ export class Player {
     this.walkT = 0;
     this.moving = false;
     this.diveHit = false;
+    this.alpha = 1;             // story cutscenes fade the agent into the trees
   }
 
   get airborne() { return this.z > 6; }
@@ -260,7 +261,7 @@ export class Alien {
     this.riseZ = 0;              // beam lift height
     this.rustleT = 1 + Math.random() * 3;
     this.wanderT = 0;
-    this.alpha = 1;
+    this.alpha = 1;              // story cutscenes fade it out into the trees
     this.revealT = 0;            // Noise Maker ping: marked + can't cloak while > 0
     this.look = 'stars';         // how a stun is drawn: stars | zzz | ice | zap
     this.drowsyT = 0;            // Tranq Dart: slowed, then falls asleep

@@ -43,12 +43,26 @@ no money, shop or upgrades anywhere in it: base kit only, no clock, no UFO, no p
    "cornered aliens fight back" tips turn up the first time they matter, and Voss chimes in on
    the radio. **Secure 3** and the other twelve break cover and bolt north down the dirt road;
    you do a double-take (**! ! !**) and give chase, and the scene ends.
+3. **Scene 2: Barnyard.** A black title card, then the agent jogs in up the same dirt road to a
+   farm: a big red barn at the side of the road, a glass greenhouse across from it, a stone well in
+   the yard, bushes scattered about, all hemmed in by forest with a deep tree line to the north. The
+   12 that got away are hiding all over it (four in the barn, two in the greenhouse, the rest outside).
+   **Walk into the barn and its roof lifts off** so you can see inside: a wreck of scattered tools and
+   hay, empty animal pens with their gates hanging open, mud tracked everywhere, and three rows of
+   nest boxes up the back wall, every one of them emptied. The greenhouse is glass, so you can always
+   see in; step inside and the frame fades back too. No tutorial this time, just Voss on the radio.
+   **Secure 6** and every alien still out there breaks cover and bolts for the tree line (the barn
+   roof lifts so you see them scramble out of it) and melts into the trees. The agent jumps (**!?**),
+   then loses his temper: stamps his feet, a vein pops, steam, a **#\*%!**, and he charges in after
+   them. Cut to the edge of the woods, he plunges in behind the last two, and the scene ends.
 
-Scene 2 picks up from the road (coming soon). All the story text lives in `js/data/stage1.js`.
+Scene 3 is on its way. All the story text lives in `js/data/stage1.js`.
 
 ## 📺 Menus
 
-- **STORY** — Stage 1: **PLAY STAGE 1** from the briefing, or jump straight into **SCENE 1** once you've seen it.
+- **STORY** — Stage 1: **PLAY STAGE 1** from the briefing, or tap a scene to jump straight into it once
+  it's open (Scene 1 after the briefing, Scene 2 once Scene 1 is cleared). Clearing a scene offers
+  **CONTINUE** straight into the next one.
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
 - **MISSION BRIEFING** — deploying on a contract opens a short classified CIA memo that types itself out
   (with typewriter sound) beside your personnel file: a 2-3 sentence situation report (including map rules
@@ -143,6 +157,9 @@ deducted from it. You need at least one capture to clear a mission and unlock th
   in between, a winding dirt road out through the forest to the north. Ground textures fade into each
   other instead of meeting on a hard tile edge. Also playable in Sandbox.
 
+- **Barnyard** *(Stage 1)* — a big red barn and a glass greenhouse you can walk into (their roofs fade
+  away while you're inside), a stone well, bushes and a north tree line. Also playable in Sandbox.
+
 13 missions across the five maps, then endless **Overtime Shifts** (rotating every map) that keep scaling up.
 
 ## 🧰 Equipment shop
@@ -214,12 +231,15 @@ js/loadout.js       two-slot gadget loadout (resolve against owned gear, equip /
 js/weapons.js       every hand-fired gadget: fire / cooldown / world fx, shared by the agent and decoys
 js/decoy.js         Decoy Agent AI (flank-and-herd hunting, uses your gear, can't grab)
 js/intro.js         Stage 1 opening cutscene: satellite replay, pull-back to the ops room, Voss's briefing
+js/director.js      shared story-scene director: objective panel, hints, Voss's radio, markers, cutscene letterbox
 js/tutorial.js      Stage 1 Scene 1 director: tutorial steps, hints, radio, the stampede cutscene
+js/barnyard.js      Stage 1 Scene 2 director: arrival, secure 6, the run for the tree line
 js/terrain.js       dithered fades between ground textures + smooth painted roads
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/storyArt.js story art: Handler Voss, the alien cruiser + pods, 3x5 pixel font
-js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines
-js/data/maps.js     the six maps
+js/data/barnyardArt.js  Scene 2 art: walk-in barn + greenhouse (roof shell + cutaway), nest wall, well, barn clutter, floor decals
+js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines (both scenes)
+js/data/maps.js     the seven maps, and walk-in buildings (MapBuilder.building)
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
 js/save.js          localStorage save (progress + settings + sandbox loadout)
 js/audio.js         WebAudio synth SFX

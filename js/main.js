@@ -10,9 +10,14 @@ import { Game } from './game.js';
 import { UI } from './ui.js';
 import { initVersionBadge } from './version.js';
 import { buildVoss } from './data/storyArt.js';
-import { stage1Scene } from './data/stage1.js';
+import { STAGE1, stage1Scene } from './data/stage1.js';
 import { Intro } from './intro.js';
 import { Tutorial } from './tutorial.js';
+import { BarnyardScene } from './barnyard.js';
+import { sfx } from './audio.js';
+
+// Who runs each Stage 1 scene (objectives, radio, cutscenes).
+const SCENE_DIRECTORS = { 1: Tutorial, 2: BarnyardScene };
 
 loadSave();
 setupInput();
@@ -92,8 +97,9 @@ const cashText = document.getElementById('cash-text');
 const warnEl = document.getElementById('hud-warning');
 const stamBar = document.getElementById('stamina-bar');
 
-let state = 'menu';    // menu | intro | play | paused
+let state = 'menu';    // menu | intro | card | play | paused
 let intro = null;      // the Stage 1 opening cutscene while state === 'intro'
+let cardTimer = 0;     // the title card between scenes (state === 'card')
 let scale = 4;
 let viewW = 200, viewH = 400;
 let afterResize = () => {};   // replaced once the game exists (edge-arrow insets)
@@ -153,7 +159,8 @@ function enterMission(mission) {
   // story scenes: no bank, no clock (the HUD hides the cash + timer pills)
   hud.classList.toggle('story', !!mission.story);
   game.startMission(mission);
-  if (mission.tutorial) game.director = new Tutorial(game);
+  const Director = mission.story && SCENE_DIRECTORS[mission.scene];
+  if (Director) game.director = new Director(game);
   showGadgets(game.loadout.map(id => GEAR.find(g => g.id === id)));
   clearInput();
   measureInsets();
@@ -188,11 +195,39 @@ function startStory() {
   state = 'intro';
 }
 
+// Into a later scene: a black STAGE / SCENE title card, and the scene
+// starts up underneath it as it fades.
+function startSceneWithCard(n) {
+  ui.clear();
+  hud.classList.add('hidden');
+  controls.classList.add('hidden');
+  clearInput();
+  if (intro) { intro.destroy(); intro = null; }
+  const sc = STAGE1.scenes[n - 1];
+  cineRoot.innerHTML =
+    `<div class="title-card"><div class="tc-stage">${STAGE1.name}</div>` +
+    `<div class="tc-scene">SCENE ${n}: ${sc.name.toUpperCase()}</div></div>`;
+  cineRoot.classList.remove('hidden', 'fade-out');
+  state = 'card';
+  sfx.typeReturn();
+  clearTimeout(cardTimer);
+  cardTimer = setTimeout(() => {
+    enterMission(stage1Scene(n));
+    cineRoot.classList.add('fade-out');
+    cardTimer = setTimeout(() => {
+      cineRoot.innerHTML = '';
+      cineRoot.classList.add('hidden');
+      cineRoot.classList.remove('fade-out');
+    }, 700);
+  }, 1500);
+}
+
 const ui = new UI(uiRoot, assets, {
   startMission(n) { enterMission(getMission(n)); },
   startSandbox(mission) { enterMission(mission); },
   startStory() { startStory(); },
-  startScene(n) { enterMission(stage1Scene(n)); },
+  // Scene 1 drops straight into the fields; later scenes open on a title card
+  startScene(n) { if (n > 1) startSceneWithCard(n); else enterMission(stage1Scene(n)); },
   resume() {
     ui.clear();
     clearInput();

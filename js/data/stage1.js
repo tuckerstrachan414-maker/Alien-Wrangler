@@ -6,6 +6,11 @@
 //   2. Scene 1, Farm Fields. Learn the controls on 15 hiding Grunts. Once 3
 //      are secured the other 12 break cover and bolt down the dirt road; the
 //      agent jumps, then gives chase, and the scene ends.
+//   3. Scene 2, Barnyard. The road leads to a farm: a big barn at the side of
+//      the road, a glass greenhouse, a well, bushes. The 12 are hiding all
+//      over it (the barn roof lifts off when you walk in). Secure 6 and the
+//      rest run for the tree line; the agent jumps, fumes, follows them in,
+//      and the scene ends.
 //
 // There is no money, shop or upgrade anywhere in this stage: base kit only,
 // nothing to buy, no payout. All the words live here so they're easy to edit.
@@ -28,8 +33,19 @@ export const STAGE1 = {
     ],
     choice: 'ACCEPT ORDERS',
   },
+  // `fled` labels the results line for the ones that got away; `outro` is
+  // the note under it
   scenes: [
-    { num: 1, name: 'Farm Fields', map: 'farmfields', aliens: { grunt: 15 }, goal: 3 },
+    {
+      num: 1, name: 'Farm Fields', map: 'farmfields', aliens: { grunt: 15 }, goal: 3,
+      fled: 'Bolted down the road',
+      outro: 'The rest of them ran north up the dirt road.<br>Scene 2 picks up where it leads.',
+    },
+    {
+      num: 2, name: 'Barnyard', map: 'barnyard', aliens: { grunt: 12 }, goal: 6,
+      fled: 'Ran for the tree line',
+      outro: 'TO BE CONTINUED<br>The rest of them vanished into the tree line.<br>Scene 3 is on its way.',
+    },
   ],
 };
 
@@ -116,4 +132,23 @@ export const TIPS = {
 export const GLOW_TARGETS = {
   buttons: { grab: 'btn-grab', sprint: 'btn-sprint', dive: 'btn-dive', jump: 'btn-jump', dash: 'btn-dash' },
   gestures: { sprint: 'hint-sprint', dive: 'hint-dive', jump: 'hint-jump', dash: 'hint-dash' },
+};
+
+/* ---------------- Scene 2 (Barnyard) script ---------------- */
+
+// Handler Voss on the radio. `secured` is indexed by how many are in the van.
+export const RADIO2 = {
+  start: 'They went to ground on this farm, agent. All twelve of them.',
+  goal: "Van's parked by the barn. Round up six of them.",
+  spotted: "There's one! Don't let it get away.",
+  barn: 'Check that barn. Plenty of places to hide in there.',
+  inBarn: "Mud tracks everywhere. They've been through here.",
+  secured: ['', "That's one. Five to go.", 'Two down. Keep at it.', 'Halfway there, agent.', 'Four. Two more.', 'One more, agent.'],
+  tackled: 'Careful! Corner them too long and they fight back.',
+  lost: 'Nothing moving? Try the bushes, the barn and that greenhouse.',
+  exitNag: 'Not yet, agent. We still need six.',
+};
+
+export const OBJECTIVES2 = {
+  secure: 'SECURE 6 ALIENS',
 };

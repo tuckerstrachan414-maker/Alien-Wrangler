@@ -14,39 +14,27 @@
 // Once the 3rd alien is secured: STAMPEDE. The other twelve break cover all
 // over the fields and bolt north down the dirt road; the agent does a
 // double-take ("!!!"), then gives chase up the road, and the scene ends.
+//
+// The objective panel, hints, radio, markers and cutscene plumbing live in
+// the shared StoryDirector (director.js).
 import { sfx } from './audio.js';
-import { getControlMode, inputMethod } from './input.js';
 import { overlapsJumpable, findPath } from './nav.js';
+import { StoryDirector } from './director.js';
 import { RADIO, OBJECTIVES, CONTROL_HINTS, TIPS, GLOW_TARGETS } from './data/stage1.js';
 
-const GRAV = 430;
 const rand = (a, b) => a + Math.random() * (b - a);
 
-export class Tutorial {
+export class Tutorial extends StoryDirector {
   constructor(game) {
-    this.game = game;
-    this.t = 0;
-    this.stepT = 0;
+    super(game, { objectives: OBJECTIVES, hints: CONTROL_HINTS, glow: GLOW_TARGETS });
     this.step = 'intro';          // intro | move | find | grab | load | secure | stampede
-    this.locked = false;          // true while the stampede cutscene has the controls
-    this.ownsPlayer = false;      // ...and walks the agent itself
-    this.moveInput = { move: { x: 0, y: 0 }, mag: 0, sprint: false, sprintToggle: false, sprintEdge: false, edgeSpent: false };
-    this.seen = {};               // one-off tips already shown
     this.moved = 0;
     this.lastPos = { x: game.player.x, y: game.player.y };
     this.sinceFlush = 0;
     this.chaseSlowT = 0;
-    this.radioQ = [];
-    this.radioT = 0;
-    this.tipT = 0;
-    this.glowEl = null;
-    this.scheme = null;
-    this.marker = null;           // {x, y, kind} objective marker on the map
     this.nagT = -99;
-    this.cs = null;               // stampede cutscene state
 
     this.placeTutorAlien();
-    this.buildDom();
   }
 
   // The first alien always hides in the little corn patch by the van, so a
@@ -63,120 +51,6 @@ export class Tutorial {
     }
     a.x = spot.x; a.y = spot.y; a.hideSpot = spot;
     this.tutorAlien = a;
-  }
-
-  /* ---------------- DOM: objective, hints, radio, skip ---------------- */
-
-  buildDom() {
-    const hud = document.getElementById('hud');
-    this.el = document.createElement('div');
-    this.el.className = 'tut';
-    this.el.innerHTML =
-      '<div class="tut-obj hidden"><i>OBJECTIVE</i><b></b></div>' +
-      '<div class="tut-hint hidden"></div>' +
-      '<div class="tut-hint alt hidden"></div>';
-    this.objEl = this.el.querySelector('.tut-obj');
-    this.objText = this.objEl.querySelector('b');
-    const hints = this.el.querySelectorAll('.tut-hint');
-    this.hintEl = hints[0];
-    this.hint2El = hints[1];
-
-    this.radioEl = document.createElement('div');
-    this.radioEl.className = 'radio hidden';
-    this.radioEl.innerHTML = '<canvas class="radio-face pixel-canvas" width="28" height="30"></canvas>' +
-      '<div class="radio-body"><b>VOSS</b><span></span></div>';
-    this.radioFace = this.radioEl.querySelector('canvas');
-    this.radioText = this.radioEl.querySelector('span');
-
-    this.skipEl = document.createElement('button');
-    this.skipEl.className = 'cine-skip tut-skip hidden';
-    this.skipEl.textContent = 'SKIP';
-    this.skipEl.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); this.endScene(); });
-
-    hud.appendChild(this.el);
-    hud.appendChild(this.radioEl);
-    hud.appendChild(this.skipEl);
-  }
-
-  destroy() {
-    this.setGlow(null);
-    for (const e of [this.el, this.radioEl, this.skipEl]) if (e) e.remove();
-    const hud = document.getElementById('hud');
-    if (hud) hud.classList.remove('cinematic');
-  }
-
-  // Which wording / on-screen control fits the controls in use right now.
-  currentScheme() {
-    const m = inputMethod();
-    if (m === 'touch') return getControlMode() === 'gestures' ? 'gestures' : 'buttons';
-    return m;
-  }
-
-  hintText(key) {
-    const h = CONTROL_HINTS[key];
-    return h ? h[this.currentScheme()] || h.keys : '';
-  }
-
-  objective(key, count) {
-    this.objKey = key;
-    this.objText.textContent = OBJECTIVES[key] + (count !== undefined ? ` ${count}` : '');
-    this.objEl.classList.remove('hidden');
-    this.objEl.classList.remove('flash');
-    void this.objEl.offsetWidth;          // restart the flash animation
-    this.objEl.classList.add('flash');
-    sfx.objective();
-  }
-
-  // Main how-to line (and the control it names glows).
-  hint(key) {
-    this.hintKey = key;
-    this.paintHints();
-  }
-
-  // Second line: an extra tip under the main hint (sprint, dive...).
-  hint2(key) {
-    if (this.hint2Key === key) return;
-    this.hint2Key = key;
-    this.paintHints();
-  }
-
-  // A one-off tip borrows the second line for a few seconds.
-  tip(text, dur = 5, glowKey = null) {
-    this.tipText = text;
-    this.tipGlow = glowKey;
-    this.tipT = dur;
-    this.paintHints();
-  }
-
-  paintHints() {
-    const main = this.hintKey ? this.hintText(this.hintKey) : '';
-    this.hintEl.textContent = main;
-    this.hintEl.classList.toggle('hidden', !main);
-    let alt = '';
-    if (this.tipT > 0) alt = this.tipText;
-    else if (this.hint2Key) alt = this.hintText(this.hint2Key);
-    this.hint2El.textContent = alt;
-    this.hint2El.classList.toggle('hidden', !alt);
-    const glowKey = this.tipT > 0 && this.tipGlow ? this.tipGlow : this.hint2Key || this.hintKey;
-    this.setGlow(glowKey);
-    this.scheme = this.currentScheme();
-  }
-
-  setGlow(key) {
-    const targets = key && GLOW_TARGETS[this.currentScheme()];
-    const el = targets && targets[key] ? document.getElementById(targets[key]) : null;
-    if (el === this.glowEl) return;
-    if (this.glowEl) this.glowEl.classList.remove('tut-glow');
-    this.glowEl = el;
-    if (el) el.classList.add('tut-glow');
-  }
-
-  radio(text) {
-    if (!text) return;
-    text = text.toUpperCase();              // the whole UI speaks in capitals
-    if (this.radioCur === text) return;
-    // only the newest line waits: an old "grab it!" is no use once it's grabbed
-    this.radioQ = [text];
   }
 
   /* ---------------- events from the game ---------------- */
@@ -329,54 +203,7 @@ export class Tutorial {
     }
 
     // tip timer, control scheme changes, radio
-    if (this.tipT > 0) { this.tipT -= dt; if (this.tipT <= 0) this.paintHints(); }
-    if (this.scheme !== this.currentScheme()) this.paintHints();
-    this.updateRadio(dt);
-  }
-
-  nearestHidden() {
-    const g = this.game, p = g.player;
-    let best = null, bd = 1e9;
-    for (const a of g.aliens) {
-      if (a.state !== 'hiding') continue;
-      const d = Math.hypot(a.x - p.x, a.y - p.y);
-      if (d < bd) { bd = d; best = a; }
-    }
-    return best;
-  }
-
-  updateRadio(dt) {
-    if (this.radioCur) {
-      this.radioT += dt;
-      const shown = Math.min(this.radioCur.length, Math.floor(this.radioT * 55));
-      if (shown !== this.radioShown) {
-        this.radioShown = shown;
-        this.radioText.textContent = this.radioCur.slice(0, shown);
-        if (shown < this.radioCur.length && shown % 4 === 0) sfx.voice();
-      }
-      const talking = shown < this.radioCur.length;
-      const frame = talking && Math.floor(this.radioT * 9) % 2 ? 'open' : 'closed';
-      if (frame !== this.radioFrame) {
-        this.radioFrame = frame;
-        const x = this.radioFace.getContext('2d');
-        x.clearRect(0, 0, 28, 30);
-        x.drawImage(this.game.assets.voss.portrait[frame], 0, 0);
-      }
-      // linger long enough to read, less if something newer is waiting
-      const hold = this.radioQ.length ? 0.9 : 2.2 + this.radioCur.length / 30;
-      if (this.radioT > this.radioCur.length / 55 + hold) {
-        this.radioCur = null;
-        this.radioEl.classList.add('hidden');
-      }
-    } else if (this.radioQ.length) {
-      this.radioCur = this.radioQ.shift();
-      this.radioT = 0;
-      this.radioShown = -1;
-      this.radioFrame = null;
-      this.radioText.textContent = '';
-      this.radioEl.classList.remove('hidden');
-      sfx.radio();
-    }
+    this.tickUi(dt);
   }
 
   /* ---------------- the stampede ---------------- */
@@ -384,17 +211,7 @@ export class Tutorial {
   startStampede() {
     const g = this.game, p = g.player, map = g.map;
     this.step = 'stampede';
-    this.locked = true;
-    this.marker = null;
-    this.setGlow(null);
-    this.radioQ.length = 0;
-    this.radioCur = null;
-    for (const e of [this.el, this.radioEl]) e.classList.add('hidden');
-    this.skipEl.classList.remove('hidden');
-    document.getElementById('hud').classList.add('cinematic');
-    document.getElementById('controls').classList.add('hidden');
-    this.moveInput.move.x = 0; this.moveInput.move.y = 0; this.moveInput.mag = 0;
-    p.vx = 0; p.vy = 0;
+    this.enterCutscene();
 
     // everyone still out there, nearest first, freezes where they are
     const road = map.road;
@@ -527,65 +344,12 @@ export class Tutorial {
     });
   }
 
-  // Walk the agent along this.playerPath at `speed`, animating as he goes.
-  runPlayer(dt, speed) {
-    const p = this.game.player;
-    const path = this.playerPath || [];
-    while (this.pathI < path.length && Math.hypot(path[this.pathI].x - p.x, path[this.pathI].y - p.y) < 6) this.pathI++;
-    const wp = path[this.pathI];
-    if (!wp) { p.moving = false; return; }
-    const dx = wp.x - p.x, dy = wp.y - p.y, d = Math.hypot(dx, dy) || 1;
-    p.x += dx / d * speed * dt; p.y += dy / d * speed * dt;
-    p.dir.x = dx / d; p.dir.y = dy / d;
-    p.facing = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
-    p.moving = true;
-    p.sprinting = true;
-    p.walkT += dt * 11;
-    if (p.z === 0 && overlapsJumpable(this.game.map, p.x, p.y, p.r)) { p.zv = 110; p.z = 0.1; }
-    this.integrateZ(p, dt);
-  }
-
-  integrateZ(p, dt) {
-    if (p.z > 0 || p.zv !== 0) {
-      p.z += p.zv * dt; p.zv -= GRAV * dt;
-      if (p.z <= 0) { p.z = 0; p.zv = 0; }
-    }
-  }
-
-  endScene() {
-    if (this.ended) return;
-    this.ended = true;
-    sfx.sceneClear();
-    const g = this.game;
-    g.finishStory({ fled: this.fled || 0 });
-  }
-
   /* ---------------- drawing ---------------- */
 
-  // World-space: objective markers, and the agent's "!!!".
+  // World-space: the objective marker, and the agent's "!!!".
   renderWorld(ctx, camX, camY, vw, vh) {
-    const g = this.game, t = this.t;
-    const m = this.marker;
-    if (m) {
-      const x = Math.round(m.x - camX), y = Math.round(m.y - camY);
-      const col = m.kind === 'van' ? '#59d98c' : '#ffd75e';
-      const pulse = (t * 1.4) % 1;
-      ctx.globalAlpha = 1 - pulse;
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.ellipse(x, y + 2, 6 + pulse * 10, (6 + pulse * 10) * 0.5, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.globalAlpha = 1;
-      // bobbing arrow overhead
-      const ay = y - (m.kind === 'van' ? 34 : 26) + Math.round(Math.sin(t * 5) * 2);
-      ctx.fillStyle = '#14141e';
-      ctx.fillRect(x - 3, ay - 1, 7, 3); ctx.fillRect(x - 2, ay + 2, 5, 1); ctx.fillRect(x - 1, ay + 3, 3, 1); ctx.fillRect(x, ay + 4, 1, 1);
-      ctx.fillStyle = col;
-      ctx.fillRect(x - 2, ay, 5, 1); ctx.fillRect(x - 1, ay + 1, 3, 1); ctx.fillRect(x, ay + 2, 1, 1);
-      g.edgeArrow(ctx, vw, vh, camX, camY, m.x, m.y, col);
-    }
-
+    super.renderWorld(ctx, camX, camY, vw, vh);
+    const g = this.game;
     const cs = this.cs;
     if (cs && cs.phase === 'startle') {
       const p = g.player;
@@ -596,30 +360,6 @@ export class Tutorial {
         const ox = [-7, 0, 7][i], oy = [2, 0, 2][i];
         this.bang(ctx, hx + ox, hy + oy - pop - 6, i === 1 ? '#ff5e6c' : '#ffd75e');
       }
-    }
-  }
-
-  // One pixel "!" (2px wide), outlined, top-left at (x, y).
-  bang(ctx, x, y, col) {
-    ctx.fillStyle = '#14141e';
-    ctx.fillRect(x - 1, y - 1, 4, 8); ctx.fillRect(x - 1, y + 8, 4, 4);
-    ctx.fillStyle = col;
-    ctx.fillRect(x, y, 2, 6); ctx.fillRect(x, y + 9, 2, 2);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(x, y, 1, 2);
-  }
-
-  // Screen-space: letterbox bars and fades for the stampede.
-  renderScreen(ctx, vw, vh) {
-    const cs = this.cs;
-    if (!cs) return;
-    const bar = Math.round(vh * 0.1 * cs.lb);
-    ctx.fillStyle = '#000';
-    if (bar > 0) { ctx.fillRect(0, 0, vw, bar); ctx.fillRect(0, vh - bar, vw, bar); }
-    if (cs.fade > 0) {
-      ctx.globalAlpha = cs.fade;
-      ctx.fillRect(0, 0, vw, vh);
-      ctx.globalAlpha = 1;
     }
   }
 }
