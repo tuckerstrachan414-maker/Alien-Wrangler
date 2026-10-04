@@ -4,8 +4,13 @@ import {
   strawScatter, mudPatch, footprints, floorTool, spilledBucket, grainSpill, brokenBoards, eggClutch, brokenPot,
 } from './barnyardArt.js';
 import { paintPath } from '../terrain.js';
+import { buildNav } from '../nav.js';
 import { buildHighwayProps } from './highwayArt.js';
 import { HighwayStrip, CW, NP, TH } from './highwayStrip.js';
+import {
+  houseArt, carArt, buildQuietOaksProps, paintAsphalt, paintConcrete, paintCurb, paintCrosswalk,
+  paintDeck, paintPool, paintFlowerBed, paintLawnStripes, paintMulchRing, paintStain,
+} from './quietOaksArt.js';
 
 // A map = ground tile grid + props (with solids & hide spots) + van + player spawn.
 // World units are pixels; tiles are 16px.
@@ -13,6 +18,7 @@ import { HighwayStrip, CW, NP, TH } from './highwayStrip.js';
 const PROPS = buildProps();
 const YARD = buildBarnyardProps();
 const HWY = buildHighwayProps();
+const OAKS = buildQuietOaksProps();
 
 class MapBuilder {
   constructor(name, tw, th, baseTile) {
@@ -847,6 +853,523 @@ export function buildHighway29() {
   return m.done();
 }
 
+/* ------------------------- QUIET OAKS (Stage 2, Scene 1) ------------------------- */
+// A sleeping subdivision at night, with Maple Street's noise rules (sprint,
+// dash and dive quietly, especially near the houses).
+//
+// The street plan: Oak Hollow Dr comes in from the south through the brick
+// QUIET OAKS entrance and runs north to a cul-de-sac, round an island with
+// the old Quiet Oak on it; Acorn Ln crosses it east-west and runs out into
+// the oak woods that ring the whole place. Every street has a curb, a grass
+// verge (street trees, lamps, hydrants, mailboxes, bins) and a sidewalk.
+//
+// Fourteen houses, every one facing its street: the north side of Acorn Ln
+// shows us its fronts (porch, door, garage), the south side its backs (the
+// street is behind them; decks and back doors toward us), and the two on the
+// cul-de-sac stand side on, porch and garage toward the bulb. Each has a
+// driveway from its garage to the curb, usually with a car on it nose in, a
+// walk to the porch, a mailbox and the bins out at the curb (it's trash
+// night), and a backyard behind a fence: patios, pools, play sets, sheds.
+// Cars parked on the street sit at the curb facing the way traffic runs on
+// that side, clear of driveways, hydrants and the intersection.
+//
+// Drawn by quietOaksArt.js; the night itself (darkness with pools of light
+// round the lamps, porches and lit windows) is map.night, drawn by the game.
+const QO = {
+  W: 896, H: 832, F: 48,
+  roadX: [416, 480],           // Oak Hollow Dr
+  roadY: [464, 528],           // Acorn Ln
+  bulb: { x: 448, y: 200, r: 72, island: 26, ring: 104 },
+  gateGap: [384, 512],         // the way out through the woods to the south
+};
+
+// Which way traffic runs past each curb (right-hand traffic): a car parked
+// there faces this way.
+export const PARK_FACE = { acornN: 'left', acornS: 'right', oakW: 'down', oakE: 'up' };
+
+export function buildQuietOaks() {
+  const m = new MapBuilder('Quiet Oaks', 56, 52, T.GRASS);
+  const { W, H, F } = QO;
+  const [RX0, RX1] = QO.roadX, [RY0, RY1] = QO.roadY;
+  const B = QO.bulb;
+  const rnd = mulberry(7272);
+  m.variety(T.GRASS, T.GRASS2, 0.3, 91);
+  m.stealth = true;
+  m.night = { dark: 'rgba(7, 10, 30, 0.62)', lights: [] };
+  m.streets = { ...QO, curbs: [] };
+  // a light in the dark: radius r, `warm` its coloured glow, `k` how much of
+  // the dark it lifts
+  const light = (x, y, r, warm = 0.14, k = 1) => m.night.lights.push({ x: Math.round(x), y: Math.round(y), r, warm, k });
+
+  // ground jobs, run in paintGround in this order (later on top)
+  const layers = { lawn: [], yard: [], drive: [], walk: [], beds: [], street: [], top: [] };
+  const drives = [];           // driveway rects (the street can't park across their mouths)
+  const parked = [];           // cars on the street, for the validator
+  m.parking = parked;
+  m.drives = drives;
+  m.houseList = [];
+
+  // A prop that hides an alien but can't be walked into: its hiding spot
+  // goes just behind it (north), or in front if something's there.
+  const blocked = (x, y) => m.solids.some(q => !q.jumpable && x > q.x - 4 && x < q.x + q.w + 4 && y > q.y - 4 && y < q.y + q.h + 4);
+  const place = (def, x, y, opts = {}) => {
+    const hideBehind = def.hide && def.solid && !def.jumpable;
+    m.customProp(def, Math.round(x), Math.round(y), { ...opts, noHide: hideBehind || opts.noHide });
+    if (hideBehind && !opts.noHide) {
+      const sx = x + def.solid.x + def.solid.w / 2;
+      const back = y + def.solid.y - 6, front = y + def.solid.y + def.solid.h + 6;
+      m.pendingHides = m.pendingHides || [];
+      m.pendingHides.push({ x: Math.round(sx), ys: [back, front] });
+    }
+  };
+
+  /* ---------------- the woods all round ---------------- */
+  const [G0, G1] = QO.gateGap;
+  m.solids.push(
+    { x: 0, y: 0, w: W, h: F + 2, jumpable: false },
+    { x: 0, y: 0, w: F - 2, h: H, jumpable: false },
+    { x: W - F + 2, y: 0, w: F - 2, h: H, jumpable: false },
+    { x: 0, y: H - F + 4, w: G0 - 8, h: F, jumpable: false },
+    { x: G1 + 8, y: H - F + 4, w: W - G1 - 8, h: F, jumpable: false },
+  );
+  const edgeTree = (cx, baseY) => {
+    const pick = rnd();
+    const def = pick < 0.35 ? OAKS.oak : pick < 0.6 ? OAKS.oak2 : pick < 0.8 ? PROPS.tree : PROPS.pine;
+    m.customProp(def, Math.round(cx - def.img.width / 2), Math.round(baseY - def.img.height), { noHide: true });
+  };
+  for (let x = 10; x < W - 4; x += 16 + Math.floor(rnd() * 8)) edgeTree(x, F + 6 + rnd() * 6);
+  for (let x = 12; x < W - 4; x += 16 + Math.floor(rnd() * 8)) {
+    if (x > G0 - 118 && x < G1 + 118) continue;            // keep the entrance walls clear
+    edgeTree(x, H - F + 22 + rnd() * 6);
+  }
+  for (let y = F + 26; y < H - F; y += 18 + Math.floor(rnd() * 8)) {
+    edgeTree(F - 10 + rnd() * 6, y);
+    edgeTree(W - F + 10 - rnd() * 6, y);
+  }
+
+  /* ---------------- the street lamps (first, so the rest keeps clear) ---------------- */
+  const lamp = (x, baseY, left) => {
+    const def = left ? OAKS.lampL : OAKS.lampR;
+    const px = Math.round(x - (left ? 17 : 5)), py = Math.round(baseY - 43);
+    place(def, px, py);
+    light(px + def.head.x, baseY + 2, 54, 0.1, 0.86);
+  };
+  // Acorn Ln
+  lamp(104, RY0 - 4, false); lamp(600, RY0 - 4, false);
+  lamp(316, RY1 + 12, true); lamp(800, RY1 + 12, true);
+  // Oak Hollow Dr
+  lamp(408, 352, false); lamp(408, 664, false);
+  lamp(488, 316, true); lamp(488, 760, true);
+  // round the bulb
+  lamp(B.x - 80, B.y + 30, false); lamp(B.x + 80, B.y + 30, true);
+
+  /* ---------------- the houses ---------------- */
+  // north row (fronts to us), south row (backs to us), the cul-de-sac (side on)
+  const LOTS = [
+    { x0: 48, x1: 160, side: 'n', build: 'ranch', color: 'sage', garage: 'right', lit: [1], car: ['suv', 'silver'], yard: ['patio', 'swing'] },
+    { x0: 160, x1: 272, side: 'n', build: 'colonial', color: 'white', garage: 'left', lit: [], car: ['sedan', 'black'], yard: ['pool'], hoop: true },
+    { x0: 272, x1: 384, side: 'n', build: 'bungalow', color: 'yellow', garage: 'right', lit: [3], car: ['hatch', 'red'], yard: ['garden', 'doghouse'] },
+    { x0: 512, x1: 624, side: 'n', build: 'cape', color: 'blue', garage: 'left', lit: [0], car: ['minivan', 'beige'], yard: ['trampoline', 'patio'] },
+    { x0: 624, x1: 736, side: 'n', build: 'split', color: 'brick', garage: 'right', lit: [], car: ['sedan', 'blue'], yard: ['shed', 'garden'] },
+    { x0: 736, x1: 848, side: 'n', build: 'ranch', color: 'grey', garage: 'left', lit: [2], car: ['pickup', 'red'], yard: ['kiddie', 'patio'] },
+    { x0: 48, x1: 160, side: 's', build: 'colonial', color: 'tan', garage: 'right', lit: [2], car: ['sedan', 'white'], yard: ['pool'] },
+    { x0: 160, x1: 272, side: 's', build: 'ranch', color: 'cream', garage: 'left', lit: [], car: ['hatch', 'green'], yard: ['swing', 'shed'] },
+    { x0: 272, x1: 384, side: 's', build: 'cape', color: 'sage', garage: 'right', lit: [1], car: null, yard: ['trampoline', 'garden'] },
+    { x0: 512, x1: 624, side: 's', build: 'ranch', color: 'yellow', garage: 'left', lit: [0], car: ['sedan', 'maroon'], yard: ['doghouse', 'patio'] },
+    { x0: 624, x1: 736, side: 's', build: 'colonial', color: 'grey', garage: 'right', lit: [], car: ['suv', 'black'], yard: ['pool'] },
+    { x0: 736, x1: 848, side: 's', build: 'split', color: 'white', garage: 'left', lit: [3], car: ['hatch', 'silver'], yard: ['shed', 'kiddie'] },
+    { cul: 'w', build: 'colonial', color: 'brick', lit: [2], car: ['sedan', 'green'], yard: ['pool', 'swing', 'shed'] },
+    { cul: 'e', build: 'ranch', color: 'blue', lit: [0], car: ['suv', 'white'], yard: ['trampoline', 'garden', 'doghouse'] },
+  ];
+  const N_BASE = 384;          // north row: where the walls meet the ground (on a tile line,
+                               // so the front yard's first row of tiles is clear to walk)
+  const S_TOP = 628;           // south row: the front (north) wall's line
+  const N_FENCE = 258, S_FENCE = 756;    // the backyards' rear fences
+
+  // the curbside things for one house: the mailbox one side of the
+  // driveway, the bins the other (whichever way round fits on the verge
+  // without bumping into the neighbours' or anything else, inside the lot)
+  const free = (r) => !m.solids.some(q => r.x < q.x + q.w + 2 && q.x < r.x + r.w + 2 && r.y < q.y + q.h + 2 && q.y < r.y + r.h + 2);
+  const curbside = (dx0, dx1, vergeY, lot) => {
+    const sol = (def, x, y) => ({ x: x + def.solid.x, y: y + def.solid.y, w: def.solid.w, h: def.solid.h });
+    const layouts = [
+      { mb: dx0 - 15, bins: dx1 + 3 },
+      { mb: dx1 + 4, bins: dx0 - 24 },
+      { mb: dx0 - 15, bins: dx0 - 40 },
+      { mb: dx1 + 4, bins: dx1 + 19 },
+    ];
+    for (const L of layouts) {
+      const parts = [sol(OAKS.mailbox, L.mb, vergeY - 4), sol(OAKS.binTrash, L.bins, vergeY - 1), sol(OAKS.binRecycle, L.bins + 11, vergeY - 1)];
+      if (parts.some(r => r.x < lot.x0 + 2 || r.x + r.w > lot.x1 - 2)) continue;
+      if (!parts.every(free)) continue;
+      place(OAKS.mailbox, L.mb, vergeY - 4);
+      place(OAKS.binTrash, L.bins, vergeY - 1);
+      place(OAKS.binRecycle, L.bins + 11, vergeY - 1);
+      return;
+    }
+    place(OAKS.mailbox, dx0 - 15, vergeY - 4);       // no room for the bins: just the mailbox
+  };
+
+  // a few things in a backyard (area x0..x1, y0..y1)
+  const yard = (kinds, x0, x1, y0, y1, seed) => {
+    const r = mulberry(seed);
+    let cx = x0 + 6;
+    for (const k of kinds) {
+      const room = x1 - cx - 6;
+      if (k === 'pool') {
+        const pw = Math.min(64, x1 - x0 - 24), ph = Math.min(30, y1 - y0 - 18);
+        const px0 = Math.round((x0 + x1) / 2 - pw / 2), py0 = Math.round((y0 + y1) / 2 - ph / 2);
+        layers.yard.push((g) => paintPool(g, px0, py0, pw, ph));
+        m.solids.push({ x: px0, y: py0, w: pw, h: ph, jumpable: false });
+        place(OAKS.patioSet, px0 + pw + 4 > x1 - 24 ? px0 - 26 : px0 + pw + 6, py0 + 4);
+        continue;
+      }
+      if (k === 'patio') {
+        const pw = 34, ph = 22;
+        layers.yard.push((g) => paintConcrete(g, cx, y1 - ph - 4, pw, ph, { slab: 11 }));
+        place(OAKS.patioSet, cx + 6, y1 - ph);
+        cx += pw + 8;
+        continue;
+      }
+      if (k === 'garden') {
+        const gw = Math.min(40, room), gh = 14;
+        if (gw > 12) layers.beds.push((g) => paintFlowerBed(g, cx, y0 + 6, gw, gh, seed + cx));
+        place(OAKS.gnome, cx + 4 + Math.floor(r() * (gw - 12)), y0 + 4);
+        cx += gw + 8;
+        continue;
+      }
+      const def = { swing: OAKS.swingSet, shed: OAKS.shed, trampoline: OAKS.trampoline, doghouse: OAKS.doghouse, kiddie: OAKS.kiddiePool }[k];
+      if (!def) continue;
+      const w = def.img.width, h = def.img.height;
+      const yy = k === 'shed' ? y0 + 2 : Math.round(y0 + (y1 - y0 - h) * (0.3 + r() * 0.4));
+      place(def, Math.min(cx, x1 - w - 6), yy);
+      cx += w + 10;
+    }
+  };
+
+  for (const lot of LOTS) {
+    if (lot.cul) { cul(lot); continue; }
+    const north = lot.side === 'n';
+    const def = houseArt({ build: lot.build, color: lot.color, facing: north ? 'front' : 'back', garageSide: lot.garage, lit: lot.lit, seed: lot.x0 });
+    const cx = (lot.x0 + lot.x1) / 2;
+    const hx = Math.round(Math.max(lot.x0 + 8, Math.min(lot.x1 - 8 - def.w, cx - def.w / 2)));
+    const footD = def.solid.h + 1;
+    const base = north ? N_BASE : S_TOP + footD - 2;
+    const hy = base + 2 - def.h;
+    m.customHouse(def, hx, hy);
+    const house = { x0: hx, x1: hx + def.w, y0: hy, base, side: lot.side, def, lot };
+    m.houseList.push(house);
+    const wallTop = base - (def.solid.h - 1);
+    // the driveway: up to the garage door, or alongside the house if there isn't one
+    let dx0, dx1;
+    if (def.garage) { dx0 = hx + def.garage.x0; dx1 = hx + def.garage.x1; }
+    else if (lot.garage === 'left') { dx1 = hx - 3; dx0 = dx1 - 24; }
+    else { dx0 = hx + def.w + 3; dx1 = dx0 + 24; }
+    const curbY = north ? RY0 : RY1;
+    const dy0 = north ? (def.garage ? base : wallTop - 4) : curbY;
+    const dy1 = north ? curbY : (def.garage ? S_TOP : base + 6);
+    const drive = { x: dx0, y: dy0, w: dx1 - dx0, h: dy1 - dy0, side: north ? 'acornN' : 'acornS' };
+    drives.push(drive);
+    house.drive = drive;
+    layers.drive.push((g) => { paintConcrete(g, drive.x, drive.y, drive.w, drive.h, { slab: 18, along: 'y' }); paintStain(g, drive.x + drive.w / 2, north ? curbY - 40 : curbY + 46); });
+    // the car on it, nose in toward the garage
+    if (lot.car) {
+      const car = carArt(lot.car[0], lot.car[1], north ? 'up' : 'down');
+      const carX = Math.round(dx0 + (dx1 - dx0) / 2 - car.w / 2);
+      const carY = north ? (def.garage ? QO.roadY[0] - 32 - car.h : wallTop - 2) : (def.garage ? 562 : base - car.h - 4);
+      place(car, carX, carY);
+      house.car = { x: carX, y: carY, def: car };
+    }
+    if (lot.hoop) place(OAKS.hoop, dx1 - 6, north ? base - 26 : curbY + 40);
+    // the walk from the door out to the sidewalk, and the porch light
+    const doorX = hx + (north ? def.door.x : def.mainX + Math.floor(def.mainW / 2));
+    if (north) {
+      layers.walk.push((g) => paintConcrete(g, doorX - 3, base + 1, 7, QO.roadY[0] - 32 - base - 1, { slab: 6, along: 'y' }));
+      light(hx + def.porch.x, base + 3, 22);
+      if (def.garage) light(hx + (def.garage.x0 + def.garage.x1) / 2, base + 3, 18, 0.1);
+      // a bed of shrubs along the front of the house
+      const bx0 = hx + def.mainX + 2, bx1 = hx + def.mainX + def.mainW - 2;
+      layers.beds.push((g) => { paintFlowerBed(g, bx0, base + 2, Math.max(0, doorX - 6 - bx0), 7, lot.x0); paintFlowerBed(g, doorX + 6, base + 2, Math.max(0, bx1 - doorX - 6), 7, lot.x0 + 1); });
+      for (const sx of [bx0 + 1, bx1 - 17]) if (Math.abs(sx + 8 - doorX) > 14) place(OAKS[(lot.x0 / 16) % 3 ? 'shrub' : 'azalea'], sx, base);
+      layers.lawn.push((g) => paintLawnStripes(g, lot.x0 + 4, base + 9, lot.x1 - lot.x0 - 8, QO.roadY[0] - 32 - base - 10, 'x'));
+    } else {
+      layers.walk.push((g) => paintConcrete(g, doorX - 3, QO.roadY[1] + 32, 7, S_TOP - QO.roadY[1] - 32, { slab: 6, along: 'y' }));
+      light(doorX, S_TOP - 3, 20);                          // the porch light round the front
+      light(hx + def.porch.x, base + 4, 18);                // the light by the back door
+      // the deck off the back
+      const dkx = hx + def.mainX + 4, dkw = def.mainW - 8;
+      layers.yard.push((g) => paintDeck(g, dkx, base + 2, dkw, 14));
+      layers.lawn.push((g) => paintLawnStripes(g, lot.x0 + 4, QO.roadY[1] + 34, lot.x1 - lot.x0 - 8, S_TOP - QO.roadY[1] - 52, 'x'));
+    }
+    // lit windows spill a little light
+    for (const w of def.windows) if (w.lit) light(hx + w.x + w.w / 2, base + 4, 14, 0.24);
+    // the mailbox and the bins out at the curb
+    curbside(dx0, dx1, north ? RY0 - 16 : RY1, lot);
+    // the backyard, fenced
+    if (north) {
+      const yb = hy + 2;                                    // the roof's top edge: the yard's behind it
+      yard(lot.yard, lot.x0, lot.x1, N_FENCE + 18, yb - 4, lot.x0 + 3);
+    } else {
+      yard(lot.yard, lot.x0, lot.x1, base + 22, S_FENCE - 2, lot.x0 + 5);
+    }
+  }
+
+  // The cul-de-sac's two: side on to us, the street end toward the bulb.
+  function cul(lot) {
+    const west = lot.cul === 'w';
+    const def = houseArt({ build: lot.build, color: lot.color, facing: 'side', garageSide: west ? 'right' : 'left', lit: lot.lit, seed: west ? 3 : 5 });
+    const base = 236;
+    const hx = west ? 314 - def.w : 582;
+    const hy = base + 2 - def.h;
+    m.customHouse(def, hx, hy);
+    const house = { x0: hx, x1: hx + def.w, y0: hy, base, side: west ? 'culW' : 'culE', def, lot };
+    m.houseList.push(house);
+    const bodyEnd = west ? hx + def.body.x1 : hx + def.body.x0;
+    const curbAt = (y) => B.x + (west ? -1 : 1) * Math.sqrt(Math.max(0, B.r * B.r - (y - B.y) ** 2));
+    const ringAt = (y) => B.x + (west ? -1 : 1) * Math.sqrt(Math.max(0, B.ring * B.ring - (y - B.y) ** 2));
+    const dy0 = base - 40, dy1 = base - 18;        // the garage is on the street end, beside the porch
+    const cx0 = west ? bodyEnd : Math.round(curbAt(dy0)) - 2;
+    const cx1 = west ? Math.round(curbAt(dy0)) + 2 : bodyEnd;
+    const drive = { x: cx0, y: dy0, w: cx1 - cx0, h: dy1 - dy0, side: 'bulb' };
+    drives.push(drive);
+    house.drive = drive;
+    layers.drive.push((g) => { paintConcrete(g, drive.x, drive.y, drive.w, drive.h, { slab: 18 }); paintStain(g, west ? cx0 + 18 : cx1 - 18, dy0 + 10); });
+    const car = carArt(lot.car[0], lot.car[1], west ? 'left' : 'right');
+    const carX = west ? bodyEnd + 3 : bodyEnd - 3 - car.w;
+    place(car, carX, dy0 + Math.round((dy1 - dy0 - car.h) / 2));
+    house.car = { x: carX, y: dy0, def: car };
+    // the walk from the porch to the sidewalk round the bulb
+    const py = base - 8;
+    const wx0 = west ? hx + def.w - 1 : Math.round(ringAt(py)) - 6;
+    const wx1 = west ? Math.round(ringAt(py)) + 6 : hx + 1;
+    layers.walk.push((g) => paintConcrete(g, wx0, py - 3, wx1 - wx0, 7, { slab: 6 }));
+    light(hx + def.porch.x, base + 3, 22);
+    for (const w of def.windows) if (w.lit) light(hx + w.x + w.w / 2, base + 4, 14, 0.24);
+    // the backyard: everything on the far side of the house, out to the woods
+    const yx0 = west ? F + 6 : hx + def.w + 10, yx1 = west ? hx - 10 : W - F - 6;
+    yard(lot.yard, yx0, yx1, F + 26, N_FENCE - 6, west ? 71 : 73);
+    place(OAKS.mailbox, west ? Math.round(curbAt(dy0 - 6)) - 16 : Math.round(curbAt(dy0 - 6)) + 4, dy0 - 22);
+  }
+
+  /* ---------------- fences round the backyards ---------------- */
+  const fenceH = (x0, x1, y) => { for (let x = x0; x + 16 <= x1; x += 16) place(OAKS.privacyH, x, y); };
+  const fenceV = (x, y0, y1) => { for (let y = y0; y < y1; y += 16) place(OAKS.privacyV, x, y); };
+  fenceH(F + 8, RX0 - 52, N_FENCE); fenceH(RX1 + 52, W - F - 8, N_FENCE);
+  fenceH(F + 8, 288, S_FENCE); fenceH(608, W - F - 8, S_FENCE);
+  for (const x of [157, 269, 621, 733]) {
+    fenceV(x, N_FENCE + 16, N_BASE - 70);                    // between the north row's yards (a gate gap by the houses)
+    fenceV(x, S_TOP + 54, S_FENCE - 4);                      // ...and the south row's
+  }
+
+  /* ---------------- the street furniture ---------------- */
+  // the entrance: brick walls either side of the road, lanterns on the pillars
+  place(OAKS.monument, 286, H - F - 30);
+  place(OAKS.monument, 514, H - F - 30);
+  for (const x of [287, 371, 515, 599]) { place(OAKS.lantern, x, H - F - 42, { noHide: true }); light(x + 5, H - F, 30, 0.25); }
+  layers.beds.push((g) => { paintFlowerBed(g, 292, H - F + 6, 88, 8, 801); paintFlowerBed(g, 520, H - F + 6, 88, 8, 802); });
+  // hydrants, signs, barricades where Acorn Ln runs into the woods
+  place(OAKS.hydrant, 362, RY0 - 15);
+  place(OAKS.hydrant, 524, RY1 + 2);
+  place(OAKS.hydrant, 402, 600);
+  place(OAKS.stopSign, 360, RY1 - 17);          // for traffic heading east, on its right
+  place(OAKS.stopSign, 514, RY0 - 31);          // ...and heading west
+  place(OAKS.streetSign, 466, RY0 - 47);        // on the corner verge
+  place(OAKS.slowSign, 484, 690);
+  for (const y of [RY0 + 2, RY0 + 30]) { place(OAKS.barricade, F + 2, y); place(OAKS.barricade, W - F - 36, y); }
+  // street trees on the verges, between everything else
+  const vergeOk = (x, y, w = 22) => !m.solids.some(q => x + w > q.x - 6 && x < q.x + q.w + 6 && y + 6 > q.y - 6 && y < q.y + q.h + 6) &&
+    !drives.some(d => x + w > d.x - 8 && x < d.x + d.w + 8 && y + 4 > d.y && y < d.y + d.h);
+  const streetTree = (x, baseY) => {
+    const def = rnd() < 0.5 ? OAKS.maple : OAKS.maple2;
+    const tx = Math.round(x - def.img.width / 2), ty = Math.round(baseY - def.img.height);
+    const sx = tx + def.solid.x, sy = ty + def.solid.y;
+    if (!vergeOk(sx - 4, sy, def.solid.w + 8)) return;
+    place(def, tx, ty, { see: true });
+    layers.top.push((g) => paintMulchRing(g, x, baseY - 3, 6));
+  };
+  for (let x = 72; x < W - 60; x += 48) {
+    if (x > RX0 - 40 && x < RX1 + 40) continue;
+    streetTree(x + 12, RY0 - 4);
+    streetTree(x + 36, RY1 + 12);
+  }
+  for (let y = 300; y < H - 80; y += 56) {
+    if (y > RY0 - 40 && y < RY1 + 40) continue;
+    streetTree(408, y + 20);
+    streetTree(488, y + 46);
+  }
+  // the Quiet Oak itself, on the island
+  const qo = OAKS.quietOak;
+  place(qo, B.x - qo.img.width / 2, B.y + 10 - qo.img.height, { see: true });
+  // and the oaks the place is named for, out in the big yards (wherever one
+  // fits: clear of everything solid, every house and every driveway)
+  const fits = (x0, y0, x1, y1) => !m.solids.some(q => x1 > q.x - 4 && x0 < q.x + q.w + 4 && y1 > q.y - 4 && y0 < q.y + q.h + 4) &&
+    !m.houseList.some(h => x1 > h.x0 - 6 && x0 < h.x1 + 6 && y1 > h.y0 - 6 && y0 < h.base + 4) &&
+    !drives.some(d => x1 > d.x - 6 && x0 < d.x + d.w + 6 && y1 > d.y - 6 && y0 < d.y + d.h + 6);
+  const yardOak = (cx, baseY, big = true) => {
+    const def = big ? (rnd() < 0.5 ? OAKS.oak : OAKS.oak2) : OAKS.maple;
+    const x = Math.round(cx - def.img.width / 2), y = Math.round(baseY - def.img.height);
+    const sx = x + def.solid.x, sy = y + def.solid.y;
+    if (!fits(sx - 10, sy - 6, sx + def.solid.w + 10, sy + def.solid.h + 4)) return;
+    place(def, x, y, { see: true });
+    layers.top.push((g) => paintMulchRing(g, Math.round(cx), Math.round(baseY - 3), 7));
+  };
+  for (const [x, y] of [[96, 248], [196, 140], [72, 150], [370, 92], [528, 92], [690, 244], [790, 150], [840, 236],
+    [92, 752], [214, 748], [344, 744], [560, 748], [690, 744], [820, 752], [330, 300], [566, 300]]) yardOak(x, y);
+
+  /* ---------------- cars parked along the curbs ---------------- */
+  // facing the way traffic runs on that side, never across a driveway mouth,
+  // by a hydrant or near the intersection
+  const PARKS = [
+    { side: 'acornN', at: [116, 288, 668], cars: [['sedan', 'blue'], ['hatch', 'white'], ['suv', 'green']] },
+    { side: 'acornS', at: [80, 236, 596, 760], cars: [['sedan', 'silver'], ['minivan', 'maroon'], ['pickup', 'blue'], ['sedan', 'beige']] },
+    { side: 'oakW', at: [312, 360, 680], cars: [['hatch', 'red'], ['sedan', 'black'], ['suv', 'silver']] },
+    { side: 'oakE', at: [372, 640], cars: [['sedan', 'white'], ['hatch', 'blue']] },
+  ];
+  const mouthClear = (side, a0, a1) => !drives.some(d => d.side === side && a1 > d.x - 8 && a0 < d.x + d.w + 8);
+  for (const P of PARKS) {
+    P.at.forEach((a, i) => {
+      const [type, color] = P.cars[i % P.cars.length];
+      const car = carArt(type, color, PARK_FACE[P.side]);
+      let x, y;
+      if (P.side === 'acornN') { x = a; y = RY0 + 1; }
+      else if (P.side === 'acornS') { x = a; y = RY1 - 1 - car.h; }
+      else if (P.side === 'oakW') { x = RX0 + 1; y = a; }
+      else { x = RX1 - 1 - car.w; y = a; }
+      const horiz = P.side.startsWith('acorn');
+      if (horiz && !mouthClear(P.side, x, x + car.w)) return;
+      place(car, x, y);
+      parked.push({ side: P.side, x, y, w: car.w, h: car.h, face: car.face });
+    });
+  }
+
+  /* ---------------- the van ---------------- */
+  // at the north curb of Acorn Ln, west of the intersection, nose west
+  m.placeVan(176, RY0 - 6);
+  m.spawn = { x: 236, y: RY0 + 12 };
+  m.arrive = { x0: 400, lane: RY0 + 2 };       // the van rolls in from here (Acorn Ln, heading west)
+  m.gate = { x: (G0 + G1) / 2, y: H + 30 };
+
+  /* ---------------- hiding spots for the solid things ---------------- */
+  for (const ph of m.pendingHides || []) {
+    const y = ph.ys.find(yy => yy > F + 4 && yy < H - F && !blocked(ph.x, yy));
+    if (y !== undefined) m.hideSpots.push({ x: ph.x, y: Math.round(y), inside: false });
+  }
+  delete m.pendingHides;
+  // Aliens path on a 16px grid: a spot in a tile that a wall touches can't
+  // be got to, so nudge each one into the nearest walkable tile (a step or
+  // two at most; a hider is never drawn, it just has to be by its cover).
+  const nav = buildNav(m);
+  const walkable = (x, y) => {
+    const cx = Math.floor(x / TILE), cy = Math.floor(y / TILE);
+    return cx >= 0 && cy >= 0 && cx < nav.gw && cy < nav.gh && nav.cells[cy * nav.gw + cx] !== 1;
+  };
+  m.hideSpots = m.hideSpots.filter((sp) => {
+    if (walkable(sp.x, sp.y)) return true;
+    for (const r of [6, 10, 14, 18]) {
+      for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0], [-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const x = sp.x + dx * r, y = sp.y + dy * r;
+        if (walkable(x, y) && !blocked(x, y)) { sp.x = Math.round(x); sp.y = Math.round(y); return true; }
+      }
+    }
+    return false;
+  });
+
+  /* ---------------- the ground ---------------- */
+  m.paintGround = (g, tiles) => {
+    for (const f of layers.lawn) f(g);
+    for (const f of layers.yard) f(g);
+    for (const f of layers.drive) f(g);
+    for (const f of layers.walk) f(g);
+    // sidewalks: along both streets, round the bulb
+    const walkRing = (x, y) => { const d = Math.hypot(x - B.x, (y - B.y)); return d >= B.ring - 16 && d < B.ring; };
+    paintConcrete(g, F, RY0 - 32, RX0 - 32 - F, 16);
+    paintConcrete(g, RX1 + 32, RY0 - 32, W - F - RX1 - 32, 16);
+    paintConcrete(g, F, RY1 + 16, RX0 - 32 - F, 16);
+    paintConcrete(g, RX1 + 32, RY1 + 16, W - F - RX1 - 32, 16);
+    const bulbFoot = B.y + Math.round(Math.sqrt(B.ring * B.ring - 64 * 64));
+    paintConcrete(g, RX0 - 32, bulbFoot - 8, 16, RY0 - bulbFoot + 8, { along: 'y' });
+    paintConcrete(g, RX1 + 16, bulbFoot - 8, 16, RY0 - bulbFoot + 8, { along: 'y' });
+    paintConcrete(g, RX0 - 32, RY1, 16, H - RY1, { along: 'y' });
+    paintConcrete(g, RX1 + 16, RY1, 16, H - RY1, { along: 'y' });
+    // the sidewalks cross Acorn Ln and Oak Hollow Dr at the corners
+    paintConcrete(g, RX0 - 32, RY0 - 32, 16, 16); paintConcrete(g, RX1 + 16, RY0 - 32, 16, 16);
+    paintConcrete(g, RX0 - 32, RY1 + 16, 16, 16); paintConcrete(g, RX1 + 16, RY1 + 16, 16, 16);
+    for (let y = B.y - B.ring; y < B.y + B.ring; y++) {
+      for (let x = B.x - B.ring; x < B.x + B.ring; x++) {
+        if (!walkRing(x + 0.5, y + 0.5)) continue;
+        if (y > B.y && Math.abs(x + 0.5 - B.x) < 32) continue;               // the road comes in here
+        // slab joints every so often round the ring
+        const joint = Math.abs(((Math.atan2(y + 0.5 - B.y, x + 0.5 - B.x) * 16 / Math.PI) % 1 + 1) % 1 - 0.5) > 0.47;
+        g.fillStyle = joint ? '#8f9196' : hash2(x, y) < 0.06 ? '#c4c6ca' : '#a9abb0';
+        g.fillRect(x, y, 1, 1);
+      }
+    }
+    // the driveways cut across the sidewalks to the curb
+    for (const d of drives) {
+      const north = d.side === 'acornN', south = d.side === 'acornS';
+      if (north) paintConcrete(g, d.x, RY0 - 32, d.w, 32, { slab: 16, along: 'y' });
+      if (south) paintConcrete(g, d.x, RY1, d.w, 32, { slab: 16, along: 'y' });
+    }
+    // the road: Acorn Ln, Oak Hollow Dr, the bulb (round the island)
+    paintAsphalt(g, F - 8, RY0, W - F * 2 + 16, RY1 - RY0);
+    paintAsphalt(g, RX0, B.y + B.island + 4, RX1 - RX0, H - B.y - B.island - 4);
+    paintAsphalt(g, B.x - B.r, B.y - B.r, B.r * 2, B.r * 2, (x, y) => {
+      const d = Math.hypot(x - B.x, y - B.y);
+      return d < B.r && d >= B.island;
+    });
+    // curbs: along the verges, round the bulb and the island, cut at the driveways
+    const cut = (x0, x1, side) => drives.filter(d => d.side === side && x1 > d.x && x0 < d.x + d.w);
+    const curbRun = (x0, x1, y, side) => {
+      let x = x0;
+      const cuts = cut(x0, x1, side).sort((a, b) => a.x - b.x);
+      for (const c of cuts) { if (c.x - 2 > x) paintCurb(g, x, y, c.x - 2 - x, 2); x = c.x + c.w + 2; }
+      if (x < x1) paintCurb(g, x, y, x1 - x, 2);
+    };
+    curbRun(F - 8, RX0 - 2, RY0 - 2, 'acornN'); curbRun(RX1 + 2, W - F + 8, RY0 - 2, 'acornN');
+    curbRun(F - 8, RX0 - 2, RY1, 'acornS'); curbRun(RX1 + 2, W - F + 8, RY1, 'acornS');
+    const mouth = B.y + Math.round(Math.sqrt(B.r * B.r - 32 * 32));
+    paintCurb(g, RX0 - 2, mouth, 2, RY0 - mouth - 2); paintCurb(g, RX1, mouth, 2, RY0 - mouth - 2);
+    paintCurb(g, RX0 - 2, RY1, 2, H - RY1); paintCurb(g, RX1, RY1, 2, H - RY1);
+    for (let a = 0; a < Math.PI * 2; a += 0.01) {
+      for (const [r, out] of [[B.r, 1], [B.island, -1]]) {
+        const x = Math.round(B.x + Math.cos(a) * (r + (out > 0 ? 0 : -1))), y = Math.round(B.y + Math.sin(a) * (r + (out > 0 ? 0 : -1)));
+        if (out > 0 && y > B.y && Math.abs(x - B.x) < 32) continue;
+        if (out > 0 && drives.some(d => d.side === 'bulb' && x >= d.x - 1 && x <= d.x + d.w + 1 && y >= d.y && y <= d.y + d.h)) continue;
+        g.fillStyle = Math.sin(a) < -0.3 ? '#d4d8dc' : '#b4b8be';
+        g.fillRect(x, y, 2, 2);
+      }
+    }
+    // crosswalks on the four approaches, a stop line before each
+    paintCrosswalk(g, RX0 - 32, RY0, 16, RY1 - RY0, false);
+    paintCrosswalk(g, RX1 + 16, RY0, 16, RY1 - RY0, false);
+    paintCrosswalk(g, RX0, RY0 - 32, RX1 - RX0, 16, true);
+    paintCrosswalk(g, RX0, RY1 + 16, RX1 - RX0, 16, true);
+    g.fillStyle = '#c8ccd2';
+    g.fillRect(RX0 - 36, (RY0 + RY1) / 2, 2, (RY1 - RY0) / 2);               // eastbound stops
+    g.fillRect(RX1 + 34, RY0, 2, (RY1 - RY0) / 2);                          // westbound
+    g.fillRect((RX0 + RX1) / 2, RY0 - 36, (RX1 - RX0) / 2, 2);              // southbound
+    g.fillRect(RX0, RY1 + 34, (RX1 - RX0) / 2, 2);                          // northbound
+    for (const f of layers.beds) f(g);
+    // the island under the Quiet Oak: grass, a ring of mulch at its foot
+    paintMulchRing(g, B.x, B.y + 6, 14);
+    for (const f of layers.top) f(g);
+    // the woods all round
+    paintForest(g, 0, 0, W, F, 301);
+    paintForest(g, 0, F, F, H - F, 302);
+    paintForest(g, W - F, F, F, H - F, 304);
+    paintForest(g, F, H - F, G0 - F - 8, F, 306);
+    paintForest(g, G1 + 8, H - F, W - F - G1 - 8, F, 307);
+  };
+  return m.done();
+}
+
+function hash2(x, y) {
+  let h = (Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  h ^= h >>> 16;
+  return (h >>> 0) / 4294967296;
+}
+
 export const MAP_BUILDERS = {
   playground: buildPlayground,
   farmhouse: buildFarmhouse,
@@ -856,4 +1379,5 @@ export const MAP_BUILDERS = {
   farmfields: buildFarmFields,
   barnyard: buildBarnyard,
   highway29: buildHighway29,
+  quietoaks: buildQuietOaks,
 };

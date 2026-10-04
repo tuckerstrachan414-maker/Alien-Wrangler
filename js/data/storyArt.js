@@ -1,6 +1,8 @@
 // Pixel art for the story cutscenes: Handler Voss, the alien cruiser that
 // breaks up over the fields, its escape pods and the space debris that hit
-// it, plus a tiny 3x5 pixel font for the ops-room monitor read-outs.
+// it, the analyst decoding the signal in Stage 2's briefing and the folder
+// Voss hands over, plus a tiny 3x5 pixel font for the ops-room monitor
+// read-outs.
 // Same rules as sprites.js: generated at boot, one light source top-left,
 // 1px near-black outline, colours from the shared material palette.
 import { C, canvas, makeSprite, flipX, mulberry } from './sprites.js';
@@ -34,6 +36,10 @@ const GLYPH_ROWS = {
   '%': ['#.#', '..#', '.#.', '#..', '#.#'], '?': ['##.', '..#', '.#.', '...', '.#.'],
   "'": ['.#.', '.#.', '...', '...', '...'], ',': ['...', '...', '...', '.#.', '#..'],
   ' ': ['...', '...', '...', '...', '...'],
+  // the alien signal's undeciphered symbols
+  '@': ['.#.', '#.#', '###', '#..', '.##'], '#': ['#.#', '###', '#.#', '###', '#.#'],
+  $: ['.##', '##.', '.#.', '.##', '##.'], '&': ['.#.', '#.#', '.#.', '#.#', '.##'],
+  '*': ['...', '#.#', '.#.', '#.#', '...'], '=': ['...', '###', '...', '###', '...'],
 };
 const GLYPHS = Object.fromEntries(Object.entries(GLYPH_ROWS).map(([k, rows]) => [k, rows.join('')]));
 
@@ -313,4 +319,90 @@ export function buildDebris() {
     '.kbddddk..',
     '..kkkkk...',
   ], { k: C.ink, a: '#9a9088', b: '#6e6660', d: '#4a4440' });
+}
+
+/* ============================ THE ANALYST ============================ */
+// Stage 2's briefing: an interpreter at her desk, decoding, with her back
+// to us the whole time. Hair up in a bun, a headset band over the crown,
+// a plum cardigan over a white collar, sat in an office chair (its back
+// hides the rest of her). 16x20, outlined after drawing.
+//   type: [a, b]  - typing, elbows working
+//   lean          - leaning in, one hand up at the headset, listening hard
+const AN = {
+  hair: '#4a2a22', hairHi: '#6e3e2e', hairLo: '#341c18',
+  band: C.mt0, bandHi: C.mt2, cup: C.mt1,
+  skin: '#d9a27a', skinLo: '#b07a55',
+  card: '#5e4a6e', cardHi: '#7a6290', cardLo: '#46365a',
+  collar: '#dfe4ea', chair: '#1b2338', chairHi: '#2b3654', chairLo: '#121828',
+};
+
+// Add the 1px ink outline round everything drawn on the canvas so far.
+function outline(c) {
+  const ctx = c.getContext('2d');
+  const { width: w, height: h } = c;
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && d[(y * w + x) * 4 + 3] > 0;
+  ctx.fillStyle = C.ink;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      if (solid(x, y)) continue;
+      if (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1)) ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  return c;
+}
+
+export function buildAnalyst() {
+  const frame = (mode) => {
+    const [c, ctx] = canvas(18, 22);
+    const px = (x, y, w, h, col) => { ctx.fillStyle = col; ctx.fillRect(x + 1, y + 1, w, h); };
+    const lean = mode === 'lean' ? -1 : 0;           // her head comes forward (up the screen)
+    // elbows out to the sides, working the keyboard
+    const le = mode === 'a' ? 0 : 1, re = mode === 'a' ? 1 : 0;
+    px(0, 13 + le, 2, 3, AN.card); px(0, 13 + le, 1, 3, AN.cardHi);
+    if (mode !== 'lean') { px(14, 13 + re, 2, 3, AN.card); px(15, 13 + re, 1, 3, AN.cardLo); }
+    // shoulders and back, in the cardigan
+    px(1, 11, 14, 6, AN.card);
+    px(2, 11, 12, 1, AN.cardHi); px(1, 12, 2, 4, AN.cardHi);
+    px(12, 12, 3, 5, AN.cardLo);
+    px(7, 12, 2, 4, AN.cardLo);                       // the seam down the back
+    // the white collar and the back of her neck
+    px(5, 10 + lean, 6, 1, AN.collar);
+    px(6, 9 + lean, 4, 2, AN.skin); px(9, 9 + lean, 1, 2, AN.skinLo);
+    // the back of her head, hair pulled up
+    px(4, 3 + lean, 8, 6, AN.hair);
+    px(3, 4 + lean, 10, 4, AN.hair);
+    px(5, 3 + lean, 3, 1, AN.hairHi); px(4, 4 + lean, 2, 2, AN.hairHi);
+    px(10, 5 + lean, 2, 3, AN.hairLo); px(5, 8 + lean, 6, 1, AN.hairLo);
+    // the bun
+    px(6, 0 + lean, 4, 3, AN.hair); px(6, 0 + lean, 2, 1, AN.hairHi); px(9, 1 + lean, 1, 2, AN.hairLo);
+    // headset: the band over the crown, a cup on each ear
+    px(3, 3 + lean, 10, 1, AN.band); px(4, 3 + lean, 3, 1, AN.bandHi);
+    px(2, 5 + lean, 1, 3, AN.cup); px(13, 5 + lean, 1, 3, AN.cup);
+    if (mode === 'lean') {
+      // her right hand up at the cup, pressing it to her ear
+      px(14, 7, 2, 7, AN.card); px(15, 8, 1, 6, AN.cardLo);
+      px(13, 5, 2, 2, AN.skin); px(14, 6, 1, 1, AN.skinLo);
+    }
+    // the chair back over her lower back
+    px(2, 16, 12, 5, AN.chair); px(2, 16, 12, 1, AN.chairHi); px(2, 17, 1, 4, AN.chairHi);
+    px(12, 17, 2, 4, AN.chairLo);
+    return outline(c);
+  };
+  return { type: [frame('a'), frame('b')], lean: frame('lean') };
+}
+
+/* ============================ THE FOLDER ============================ */
+// A manila case folder with a red CLASSIFIED band, small enough to change
+// hands in the ops room.
+export function buildFolder() {
+  return makeSprite([
+    '.kkk......',
+    'kyyykkkkk.',
+    'kyyyyyyyyk',
+    'kyrrrrrryk',
+    'kyyyyyyyyk',
+    'kYYYYYYYYk',
+    '.kkkkkkkk.',
+  ], { k: C.ink, y: '#d9b46a', Y: '#b8924a', r: '#c0392b' });
 }

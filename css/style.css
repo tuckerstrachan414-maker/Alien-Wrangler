@@ -1326,6 +1326,194 @@ button.scene-row:active { background: #2f4a6e; }
   .dlg-text { font-size: 9.5px; }
 }
 
+/* ---------- Stage 2: the signal transcript (transcript.js) ---------- */
+/* A manila case folder over everything, its cover flipping open onto the
+   classified page. */
+.tx-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(var(--safe-top) + 26px) calc(var(--safe-right) + 12px) calc(var(--safe-bottom) + 12px) calc(var(--safe-left) + 12px);
+  background: rgba(3, 4, 9, 0.72);
+  pointer-events: auto;
+  animation: txVeil 0.25s steps(3) both;
+}
+.tx-veil.out { animation: txVeilOut 0.2s steps(2) forwards; }
+@keyframes txVeil { from { background: rgba(3, 4, 9, 0); } }
+@keyframes txVeilOut { to { opacity: 0; } }
+.tx-folder {
+  position: relative;
+  width: min(380px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 14px 10px 10px;
+  background: #c9a45c;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 rgba(255, 240, 200, 0.45), inset -2px -2px 0 0 rgba(90, 60, 20, 0.45),
+    5px 7px 0 2px rgba(0, 0, 0, 0.4);
+  animation: txIn 0.3s steps(4) both;
+}
+@keyframes txIn { from { transform: translateY(24px) rotate(-3deg); opacity: 0; } }
+.tx-tab {
+  position: absolute;
+  top: -13px; left: 12px;
+  padding: 3px 8px 2px;
+  font-size: 5.5px;
+  letter-spacing: 1px;
+  color: #4a3414;
+  background: #c9a45c;
+  box-shadow: 0 -3px 0 0 var(--edge), -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge), inset 2px 2px 0 0 rgba(255, 240, 200, 0.45);
+}
+/* the cover: swings up and away off the page underneath */
+.tx-cover {
+  position: absolute;
+  inset: 14px 10px 46px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #d9b46a;
+  box-shadow: inset 2px 2px 0 0 rgba(255, 240, 200, 0.5), inset -2px -2px 0 0 rgba(90, 60, 20, 0.35);
+  transform-origin: 50% 0;
+  animation: txCover 0.55s 0.2s steps(5) forwards;
+  pointer-events: none;
+}
+.tx-cover b {
+  font-weight: 400;
+  font-size: 12px;
+  color: #b3261e;
+  padding: 5px 8px;
+  border: 3px solid #b3261e;
+  transform: rotate(-6deg);
+}
+.tx-cover small { font-size: 5px; letter-spacing: 1px; color: #6b4d1e; }
+@keyframes txCover {
+  60% { transform: scaleY(0.25); opacity: 1; }
+  to { transform: scaleY(0); opacity: 0; }
+}
+.tx-paper {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  text-transform: uppercase;
+}
+.tx-title {
+  font-size: 8px;
+  line-height: 1.6;
+  color: #1d2a44;
+  margin: 2px 0 7px;
+}
+.tx-title small { display: block; font-size: 5.5px; color: #7a6d5c; letter-spacing: 1px; }
+.tx-body { margin: 2px 0 6px; }
+.tx-line {
+  font-size: 7px;
+  line-height: 2;
+  margin: 0 0 5px !important;
+  opacity: 0;
+  transform: translateX(-4px);
+}
+.tx-line.on { opacity: 1; transform: none; transition: opacity 0.15s steps(2), transform 0.15s steps(2); }
+.scramble {
+  color: #b3261e;
+  background: rgba(179, 38, 30, 0.1);
+  letter-spacing: 0;
+  white-space: pre;
+}
+.tx-note { margin: 4px 0 8px; }
+.tx-close { width: 100%; margin: 10px 0 0; font-size: 9px; padding: 12px 8px; }
+
+/* ---------- Stage 2: the Field Locker tutorial (lockerTutorial.js) ---------- */
+/* Everything but the lit-up target is dimmed (and can't be tapped); a ring
+   round the target, a bouncing arrow at it, Voss's bubble beside it. */
+.coach { position: fixed; inset: 0; z-index: 35; pointer-events: none; }
+.coach-block {
+  position: absolute;
+  background: rgba(3, 4, 9, 0.66);
+  pointer-events: auto;
+}
+.coach-catch { position: absolute; pointer-events: auto; }
+.coach-ring {
+  position: absolute;
+  box-shadow: 0 0 0 2px var(--edge), 0 0 0 4px var(--cash);
+  animation: coachRing 0.7s steps(2) infinite;
+}
+@keyframes coachRing { 50% { box-shadow: 0 0 0 2px var(--edge), 0 0 0 4px #fff2c0; } }
+.coach-arrow {
+  position: absolute;
+  width: 16px; height: 16px;
+  background: var(--cash);
+  clip-path: polygon(30% 0, 70% 0, 70% 45%, 100% 45%, 50% 100%, 0 45%, 30% 45%);
+  filter: drop-shadow(2px 2px 0 var(--edge));
+  animation: coachBob 0.5s steps(2) infinite;
+}
+.coach-arrow.up { transform: rotate(180deg); animation-name: coachBobUp; }
+@keyframes coachBob { 50% { translate: 0 -4px; } }
+@keyframes coachBobUp { 50% { translate: 0 4px; } }
+.coach-arrow.nudge { animation: coachNudge 0.3s steps(3) 1; }
+@keyframes coachNudge { 33% { translate: -4px 0; } 66% { translate: 4px 0; } }
+.coach-bubble {
+  position: absolute;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: min(300px, calc(100vw - 20px));
+  padding: 8px 10px 8px 8px;
+  background: var(--panel);
+  pointer-events: auto;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo),
+    0 0 0 6px rgba(255, 215, 94, 0.18);
+}
+.coach-face {
+  flex: none;
+  width: 42px; height: 45px;
+  background: #0d1120;
+  box-shadow: 0 0 0 2px var(--edge), inset 0 0 0 1px #26304a;
+}
+.coach-body { flex: 1; min-width: 0; }
+.coach-text { font-size: 8px; line-height: 1.9; color: var(--ink); min-height: 2.6em; }
+.coach-anim { width: 192px; height: 68px; margin: 6px 0 0; }
+.coach-tap { font-size: 5.5px; letter-spacing: 1px; color: var(--accent); margin-top: 5px; animation: blink 0.6s steps(2) infinite; }
+.coach-skip {
+  position: absolute;
+  top: calc(var(--safe-top) + 14px);
+  right: calc(var(--safe-right) + 14px);
+  padding: 8px 10px;
+  font-family: inherit;
+  font-size: 6.5px;
+  letter-spacing: 1px;
+  color: #a9b8d6;
+  background: rgba(12, 16, 28, 0.86);
+  border: none;
+  pointer-events: auto;
+  box-shadow:
+    0 -3px 0 0 var(--edge), 0 3px 0 0 var(--edge),
+    -3px 0 0 0 var(--edge), 3px 0 0 0 var(--edge),
+    inset 2px 2px 0 0 var(--bevel-hi), inset -2px -2px 0 0 var(--bevel-lo);
+}
+/* the buy step: the BUY buttons you can afford pulse gold */
+.locker-screen.coach-buy .buy-btn.primary { animation: coachBuy 0.6s steps(2) infinite; }
+@keyframes coachBuy { 50% { background: #5a4a14; color: #fff2c0; } }
+/* DEPLOY out of the locker */
+.deploy-btn { animation: goPulse 0.9s steps(2) infinite; }
+.locker-screen .money-tag { font-size: 12px; }
+.story-balance { margin: 8px 0 0; font-size: 8px; }
+.fail-reason { color: var(--danger); }
+/* Voss can still get a word in at the very end of a cutscene */
+#hud.cinematic .radio.cine-ok { display: flex; }
+/* a story scene that pays: its takings show in the cash pill */
+#hud.story.story-pay #hud-cash { display: flex; }
+
 /* ---------- Landscape layout ---------- */
 @media (orientation: landscape) {
   #hud-top { padding-top: calc(var(--safe-top) + 6px); gap: 6px; }

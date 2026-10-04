@@ -11,14 +11,27 @@ import { UI } from './ui.js';
 import { initVersionBadge } from './version.js';
 import { buildVoss } from './data/storyArt.js';
 import { STAGE1, stage1Scene } from './data/stage1.js';
+import { STAGE2, stage2Scene } from './data/stage2.js';
 import { Intro } from './intro.js';
+import { SignalBriefing } from './signalBriefing.js';
+import { titleCardHtml } from './cutscene.js';
+import { STORY, openStoryWallet } from './account.js';
 import { Tutorial } from './tutorial.js';
 import { BarnyardScene } from './barnyard.js';
 import { HighwayScene } from './highway.js';
+import { QuietOaksScene } from './quietoaks.js';
 import { sfx } from './audio.js';
 
-// Who runs each Stage 1 scene (objectives, radio, cutscenes).
-const SCENE_DIRECTORS = { 1: Tutorial, 2: BarnyardScene, 3: HighwayScene };
+// Who runs each story scene (objectives, radio, cutscenes), by "stage-scene".
+const SCENE_DIRECTORS = { '1-1': Tutorial, '1-2': BarnyardScene, '1-3': HighwayScene, '2-1': QuietOaksScene };
+const STAGES = { 1: STAGE1, 2: STAGE2 };
+
+// The mission a story scene runs as. Stage 2 brings the story wallet's gear,
+// and pays only if the scene hasn't paid out before.
+function storyScene(stage, n) {
+  if (stage === 2) return stage2Scene(n, save.story.wallet, save.story.stage2.paid.includes(n));
+  return stage1Scene(n);
+}
 
 loadSave();
 setupInput();
@@ -99,7 +112,8 @@ const warnEl = document.getElementById('hud-warning');
 const stamBar = document.getElementById('stamina-bar');
 
 let state = 'menu';    // menu | intro | card | play | paused
-let intro = null;      // the Stage 1 opening cutscene while state === 'intro'
+let intro = null;      // the story cutscene running while state === 'intro'
+                       // (Stage 1's opening, or Stage 2's signal briefing)
 let cardTimer = 0;     // the title card between scenes (state === 'card')
 let scale = 4;
 let viewW = 200, viewH = 400;
@@ -139,6 +153,10 @@ safeProbe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;
 document.body.appendChild(safeProbe);
 function measureInsets() {
   const k = (Math.min(3, window.devicePixelRatio || 1)) / scale;   // css px -> buffer px
+  // a cutscene hides the HUD strip (the scene's opening one is already
+  // running by the time this is called): measure it as it'll be in play
+  const cine = hud.classList.contains('cinematic');
+  if (cine) hud.classList.remove('cinematic');
   const cs = getComputedStyle(safeProbe);
   const safe = (side) => parseFloat(cs[`padding${side}`]) || 0;
   const hudTop = document.getElementById('hud-top');
@@ -149,6 +167,15 @@ function measureInsets() {
     bottom: Math.ceil(safe('Bottom') * k) + 2,
     left: Math.ceil(safe('Left') * k) + 2,
   };
+  // the free stretch of the HUD's top row between the score and the cash
+  // (a story scene's noise meter sits there, clear of the objective panel)
+  const sr = document.getElementById('hud-score').getBoundingClientRect();
+  const cr = document.getElementById('hud-cash').getBoundingClientRect();
+  game.hudGap = sr.width ? {
+    x0: Math.ceil(sr.right * k), x1: cr.width ? Math.floor(cr.left * k) : Math.floor(window.innerWidth * k) - 4,
+    y0: Math.floor(sr.top * k), y1: Math.ceil(sr.bottom * k),
+  } : null;
+  if (cine) hud.classList.add('cinematic');
 }
 afterResize = measureInsets;
 
@@ -157,10 +184,12 @@ function enterMission(mission) {
   if (game.director) game.director.destroy();
   hud.classList.remove('hidden');
   controls.classList.remove('hidden');
-  // story scenes: no bank, no clock (the HUD hides the cash + timer pills)
+  // story scenes: no bank, no clock (the HUD hides the cash + timer pills),
+  // unless the scene pays, when the cash pill shows what it's made so far
   hud.classList.toggle('story', !!mission.story);
+  hud.classList.toggle('story-pay', !!mission.payPerAlien);
   game.startMission(mission);
-  const Director = mission.story && SCENE_DIRECTORS[mission.scene];
+  const Director = mission.story && SCENE_DIRECTORS[`${mission.stage}-${mission.scene}`];
   if (Director) game.director = new Director(game);
   showGadgets(game.loadout.map(id => GEAR.find(g => g.id === id)));
   clearInput();
@@ -196,24 +225,48 @@ function startStory() {
   state = 'intro';
 }
 
-// Into a later scene: a black STAGE / SCENE title card, and the scene
-// starts up underneath it as it fades.
-function startSceneWithCard(n) {
+// Stage 2 from the top: the signal briefing, then the Field Locker (the
+// story wallet opens with the agency's money the first time round, and the
+// locker tutorial runs once).
+function startStage2() {
+  ui.clear();
+  hud.classList.add('hidden');
+  controls.classList.add('hidden');
+  clearInput();
+  clearTimeout(cardTimer);
+  if (intro) intro.destroy();
+  intro = new SignalBriefing(assets, cineRoot, {
+    onDone() {
+      openStoryWallet(STAGE2.startCash);
+      save.story.stage2.introSeen = true;
+      persist();
+      const done = intro;
+      intro = null;
+      state = 'menu';
+      clearInput();
+      ui.showLocker({ tutorial: !save.story.stage2.lockerTut });
+      done.finish();              // the black fades off the locker
+    },
+  });
+  state = 'intro';
+}
+
+// Into a scene: a black STAGE / SCENE title card, and the scene starts up
+// underneath it as it fades.
+function startSceneWithCard(n, stage = 1) {
   ui.clear();
   hud.classList.add('hidden');
   controls.classList.add('hidden');
   clearInput();
   if (intro) { intro.destroy(); intro = null; }
-  const sc = STAGE1.scenes[n - 1];
-  cineRoot.innerHTML =
-    `<div class="title-card"><div class="tc-stage">${STAGE1.name}</div>` +
-    `<div class="tc-scene">SCENE ${n}: ${sc.name.toUpperCase()}</div></div>`;
+  const st = STAGES[stage], sc = st.scenes[n - 1];
+  cineRoot.innerHTML = `<div class="title-card">${titleCardHtml({ stage: st.name, scene: `SCENE ${n}: ${sc.name.toUpperCase()}` })}</div>`;
   cineRoot.classList.remove('hidden', 'fade-out');
   state = 'card';
   sfx.typeReturn();
   clearTimeout(cardTimer);
   cardTimer = setTimeout(() => {
-    enterMission(stage1Scene(n));
+    enterMission(storyScene(stage, n));
     cineRoot.classList.add('fade-out');
     cardTimer = setTimeout(() => {
       cineRoot.innerHTML = '';
@@ -227,15 +280,19 @@ const ui = new UI(uiRoot, assets, {
   startMission(n) { enterMission(getMission(n)); },
   startSandbox(mission) { enterMission(mission); },
   startStory() { startStory(); },
-  // Scene 1 drops straight into the fields; later scenes open on a title card
-  startScene(n) { if (n > 1) startSceneWithCard(n); else enterMission(stage1Scene(n)); },
+  startStage2() { startStage2(); },
+  // Stage 1 Scene 1 drops straight into the fields; every other scene opens
+  // on a title card
+  startScene(n, stage = 1) { if (stage === 1 && n === 1) enterMission(stage1Scene(1)); else startSceneWithCard(n, stage); },
   resume() {
     ui.clear();
     clearInput();
     state = 'play';
   },
   restart() {
-    enterMission(game.mission);
+    // a story scene is rebuilt, so it picks up the wallet's gear as it is now
+    const m = game.mission;
+    enterMission(m.story ? storyScene(m.stage, m.scene) : m);
   },
   abandonMission() {
     if (!game.mission) { leaveMission(); ui.showTitle(); return; }
@@ -255,9 +312,18 @@ const ui = new UI(uiRoot, assets, {
 
 game.onEnd = (r) => {
   if (r.mission.story) {
-    // story scenes pay nothing and cost nothing: just remember the progress
-    if (r.cleared && !r.abandoned) {
-      save.story.scenesCleared = Math.max(save.story.scenesCleared, r.mission.scene);
+    // A cleared scene moves the story on. Stage 1 pays nothing; a Stage 2
+    // scene banks what it made into the story wallet the first time it's
+    // cleared. A failed or quit scene banks nothing and changes nothing.
+    const m = r.mission;
+    if (r.cleared && !r.abandoned && !r.failed) {
+      const progress = m.stage === 2 ? save.story.stage2 : save.story;
+      progress.scenesCleared = Math.max(progress.scenesCleared, m.scene);
+      if (m.payPerAlien && !save.story.stage2.paid.includes(m.scene)) {
+        r.banked = r.earned || 0;
+        STORY.cash += r.banked;
+        save.story.stage2.paid.push(m.scene);
+      }
       persist();
     }
     leaveMission();
@@ -438,4 +504,4 @@ ui.showTitle();
 requestAnimationFrame(frame);
 
 // debug/testing hook
-window.__aw = { game, ui, save, get state() { return state; }, get intro() { return intro; } };
+window.__aw = { game, ui, save, assets, get state() { return state; }, get intro() { return intro; } };

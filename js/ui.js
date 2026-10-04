@@ -7,7 +7,14 @@ import { sfx } from './audio.js';
 import { buildReport, buildDossier, typewrite, renderMugshot, statRow } from './briefing.js';
 import { resolveLoadout, equipGadget, cycleSlot, slotControl, ownedGadgets } from './loadout.js';
 import { resolveAdvanced, equipAdvanced, cycleAdvancedSlot, ownedAdvanced } from './advancedGear.js';
+import { CONTRACT, STORY } from './account.js';
 import { STAGE1 } from './data/stage1.js';
+import { STAGE2 } from './data/stage2.js';
+import { openTranscript } from './transcript.js';
+import { runLockerTutorial } from './lockerTutorial.js';
+
+// The story so far, stage by stage (the numbers a mission's `stage` uses).
+const STAGES = { 1: STAGE1, 2: STAGE2 };
 
 const MAP_NAMES = {
   playground: 'Sunny Pines Playground',
@@ -18,6 +25,7 @@ const MAP_NAMES = {
   farmfields: 'Farm Fields',
   barnyard: 'Barnyard',
   highway29: 'Highway 29',
+  quietoaks: 'Quiet Oaks',
 };
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
@@ -93,8 +101,10 @@ export class UI {
 
     s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
 
+    const s2 = save.story.stage2;
     s.appendChild(this.bigBtn('STORY',
-      save.story.scenesCleared >= 3 ? 'Stage 1 &mdash; Highway 29'
+      s2.introSeen ? `Stage 2 &mdash; ${STAGE2.scenes[this.nextStage2Scene() - 1].name}`
+        : save.story.scenesCleared >= 3 ? 'Stage 2 &mdash; the signal'
         : save.story.scenesCleared >= 2 ? 'Stage 1 &mdash; the barnyard'
         : save.story.scenesCleared ? 'Stage 1 &mdash; the crash site' : 'Stage 1 &mdash; start here',
       'primary', () => this.showStory()));
@@ -110,63 +120,137 @@ export class UI {
 
   /* ---------------- story ---------------- */
 
-  // Stage 1 and its scenes. No bank, no shop: the story introduces those later.
+  // The stages and their scenes. Stage 1 has no bank and no shop; Stage 2
+  // brings in the story wallet and the Field Locker.
   showStory() {
     const s = this.screen();
     s.appendChild(this.el('div', 'game-title', 'STORY'));
     const list = this.el('div', 'card-list');
-    const card = this.el('div', 'card story-card');
-    const head = this.el('div', 'card-head');
-    head.appendChild(this.el('div', 'card-title', STAGE1.name));
-    head.appendChild(this.el('div', 'story-tag', STAGE1.sub));
-    card.appendChild(head);
-    card.appendChild(this.el('div', 'card-desc', STAGE1.blurb));
-
-    // a scene opens once you've seen the briefing and cleared the one before;
-    // tap an open one to jump straight in
-    const scenes = this.el('div', 'scene-list');
-    for (const sc of STAGE1.scenes) {
-      const cleared = save.story.scenesCleared >= sc.num;
-      const open = save.story.introSeen && save.story.scenesCleared >= sc.num - 1;
-      const row = this.el(open ? 'button' : 'div', `scene-row ${cleared ? 'done' : ''} ${open ? 'open' : 'locked'}`,
-        `<span>SCENE ${sc.num} &middot; ${sc.name.toUpperCase()}</span><b>${cleared ? 'CLEARED' : open ? 'NEW' : 'LOCKED'}</b>`);
-      if (open) row.addEventListener('click', () => { sfx.click(); this.actions.startScene(sc.num); });
-      scenes.appendChild(row);
-    }
-    scenes.appendChild(this.el('div', 'scene-row locked',
-      `<span>SCENE ${STAGE1.scenes.length + 1} &middot; ???</span><b>COMING SOON</b>`));
-    card.appendChild(scenes);
-
-    const row = this.el('div', 'card-row');
-    row.appendChild(this.btn(save.story.introSeen ? 'PLAY STAGE 1' : 'BEGIN', 'primary', () => this.actions.startStory()));
-    card.appendChild(row);
-    if (save.story.introSeen) card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 1 starts with the briefing; tap a scene to jump straight to it.'));
-    list.appendChild(card);
+    list.appendChild(this.stage1Card());
+    list.appendChild(this.stage2Card());
     s.appendChild(list);
     s.appendChild(this.btn('BACK', '', () => this.showTitle()));
   }
 
-  // End of a story scene: what happened, no money lines at all. When the
-  // next scene exists, carry straight on into it.
+  // A stage's card: title, tag, blurb.
+  stageCard(stage, cls = '') {
+    const card = this.el('div', `card story-card ${cls}`);
+    const head = this.el('div', 'card-head');
+    head.appendChild(this.el('div', 'card-title', stage.name));
+    head.appendChild(this.el('div', 'story-tag', stage.sub));
+    card.appendChild(head);
+    card.appendChild(this.el('div', 'card-desc', stage.blurb));
+    return card;
+  }
+
+  // One row per scene: a scene opens once you've seen the stage's briefing
+  // and cleared the one before; tap an open one to jump straight in.
+  // `more`: there's another scene on the way (shown as COMING SOON).
+  sceneRows(stage, progress, more = true) {
+    const scenes = this.el('div', 'scene-list');
+    for (const sc of stage.scenes) {
+      const cleared = progress.scenesCleared >= sc.num;
+      const open = progress.introSeen && progress.scenesCleared >= sc.num - 1;
+      const row = this.el(open ? 'button' : 'div', `scene-row ${cleared ? 'done' : ''} ${open ? 'open' : 'locked'}`,
+        `<span>SCENE ${sc.num} &middot; ${sc.name.toUpperCase()}</span><b>${cleared ? 'CLEARED' : open ? 'NEW' : 'LOCKED'}</b>`);
+      if (open) row.addEventListener('click', () => { sfx.click(); this.actions.startScene(sc.num, stage.id); });
+      scenes.appendChild(row);
+    }
+    if (more) {
+      scenes.appendChild(this.el('div', 'scene-row locked',
+        `<span>SCENE ${stage.scenes.length + 1} &middot; ???</span><b>COMING SOON</b>`));
+    }
+    return scenes;
+  }
+
+  stage1Card() {
+    const card = this.stageCard(STAGE1);
+    card.appendChild(this.sceneRows(STAGE1, save.story, false));
+    const row = this.el('div', 'card-row');
+    row.appendChild(this.btn(save.story.introSeen ? 'PLAY STAGE 1' : 'BEGIN', save.story.scenesCleared >= 3 ? '' : 'primary', () => this.actions.startStory()));
+    card.appendChild(row);
+    if (save.story.introSeen) card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 1 starts with the briefing; tap a scene to jump straight to it.'));
+    return card;
+  }
+
+  // Stage 2 opens once Stage 1 is cleared. Its briefing hands over the story
+  // wallet, so from then on the card shows the balance, the LOCKER, and the
+  // SIGNAL FILE (the transcript Voss handed over).
+  stage2Card() {
+    const s2 = save.story.stage2;
+    const unlocked = save.story.scenesCleared >= STAGE1.scenes.length;
+    const card = this.stageCard(STAGE2, unlocked ? 'stage2-card' : 'locked');
+    if (!unlocked) {
+      card.appendChild(this.el('div', 'card-desc', `Clear ${STAGE1.name} to unlock.`));
+      return card;
+    }
+    if (STORY.open) card.appendChild(this.el('div', 'card-pay story-balance', `${STORY.label}: $${STORY.cash}`));
+    card.appendChild(this.sceneRows(STAGE2, s2));
+    const row = this.el('div', 'card-row');
+    row.appendChild(this.btn(s2.introSeen ? 'PLAY STAGE 2' : 'BEGIN', 'primary', () => this.actions.startStage2()));
+    if (STORY.open) row.appendChild(this.btn('LOCKER', '', () => this.showEquipment('story', 'gear', STORY)));
+    card.appendChild(row);
+    if (s2.introSeen) {
+      const row2 = this.el('div', 'card-row');
+      row2.appendChild(this.btn('SIGNAL FILE', '', () => openTranscript(this.root)));
+      card.appendChild(row2);
+      card.appendChild(this.el('div', 'card-desc', 'PLAY STAGE 2 starts with the briefing; tap a scene to jump straight to it.'));
+    }
+    return card;
+  }
+
+  // End of a story scene: what happened. Stage 1 has no money lines at all;
+  // Stage 2 shows what the scene paid into the story wallet (cleared the
+  // first time) and the balance. A failed scene (the neighbours woke up)
+  // banks nothing and offers a retry. When the next scene exists, carry
+  // straight on into it.
   showStoryResults(r) {
-    const n = r.mission.scene;
-    const sc = STAGE1.scenes[n - 1];
-    const next = STAGE1.scenes[n];
+    const m = r.mission;
+    const n = m.scene, stage = STAGES[m.stage] || STAGE1;
+    const sc = stage.scenes[n - 1];
+    const next = stage.scenes[n];
+    const paying = m.stage === 2;
     const s = this.screen();
-    s.appendChild(this.el('div', 'result-verdict ok', `SCENE ${n} COMPLETE`));
-    s.appendChild(this.el('div', 'game-sub', `${STAGE1.name} &middot; ${r.mission.name.toUpperCase()}`));
     const line = (label, val, cls = '') =>
       s.appendChild(this.el('div', 'result-line', `<span>${label}</span><b class="${cls}">${val}</b>`));
+
+    if (r.failed) {
+      s.appendChild(this.el('div', 'result-verdict bad', 'SCENE FAILED'));
+      s.appendChild(this.el('div', 'game-sub', `${stage.name} &middot; ${m.name.toUpperCase()}`));
+      if (r.reason) s.appendChild(this.el('div', 'tip fail-reason', r.reason));
+      line('Aliens secured', `${r.captured}`);
+      if (m.payPerAlien) line('Earnings', 'LOST', 'neg');
+      s.appendChild(this.el('div', 'menu-spacer'));
+      s.appendChild(this.btn('RETRY SCENE', 'primary', () => this.actions.startScene(n, m.stage)));
+      if (paying && STORY.open) s.appendChild(this.btn('LOCKER', '', () => this.showEquipment('story', 'gear', STORY)));
+      s.appendChild(this.btn('STORY', '', () => this.showStory()));
+      s.appendChild(this.btn('MAIN MENU', '', () => this.showTitle()));
+      return;
+    }
+
+    s.appendChild(this.el('div', 'result-verdict ok', `SCENE ${n} COMPLETE`));
+    s.appendChild(this.el('div', 'game-sub', `${stage.name} &middot; ${m.name.toUpperCase()}`));
     line('Aliens secured', `${r.captured}`, 'pos');
     line(sc.fled, `${r.fled || 0}`, r.fled ? 'neg' : '');
+    if (paying) {
+      if (r.banked) line('Earned', `+$${r.banked}`, 'pos');
+      else line('Earned', 'ALREADY PAID OUT', '');
+      s.appendChild(this.el('div', 'result-line result-total', `<span>${STORY.label}</span><b class="pos">$${STORY.cash}</b>`));
+    }
     s.appendChild(this.el('div', 'tip', sc.outro));
+    if (paying && !r.banked) s.appendChild(this.el('div', 'tip', 'A scene pays out the first time you clear it.'));
     s.appendChild(this.el('div', 'menu-spacer'));
     if (next) {
-      s.appendChild(this.bigBtn(`CONTINUE`, `Scene ${next.num} &mdash; ${next.name}`, 'primary', () => this.actions.startScene(next.num)));
-      s.appendChild(this.btn(`REPLAY SCENE ${n}`, '', () => this.actions.startScene(n)));
+      s.appendChild(this.bigBtn('CONTINUE', `Scene ${next.num} &mdash; ${next.name}`, 'primary', () => this.actions.startScene(next.num, m.stage)));
+      s.appendChild(this.btn(`REPLAY SCENE ${n}`, '', () => this.actions.startScene(n, m.stage)));
+    } else if (m.stage === 1) {
+      // the end of Stage 1: on into Stage 2's briefing
+      s.appendChild(this.bigBtn('CONTINUE', `${STAGE2.name} &mdash; ${STAGE2.sub.toLowerCase()}`, 'primary', () => this.actions.startStage2()));
+      s.appendChild(this.btn(`REPLAY SCENE ${n}`, '', () => this.actions.startScene(n, m.stage)));
     } else {
-      s.appendChild(this.btn(`REPLAY SCENE ${n}`, 'primary', () => this.actions.startScene(n)));
+      s.appendChild(this.btn(`REPLAY SCENE ${n}`, 'primary', () => this.actions.startScene(n, m.stage)));
     }
+    if (paying && STORY.open) s.appendChild(this.btn('LOCKER', '', () => this.showEquipment('story', 'gear', STORY)));
     s.appendChild(this.btn('STORY', '', () => this.showStory()));
     s.appendChild(this.btn('MAIN MENU', '', () => this.showTitle()));
   }
@@ -282,11 +366,17 @@ export class UI {
 
   /* ---------------- equipment / skills ---------------- */
 
-  showEquipment(backTo = 'play', tab) {
+  // The shop, for whichever account is paying: the PLAY-mode bank, or the
+  // story wallet (the Field Locker). backTo says where BACK goes; 'deploy'
+  // (straight out of the Stage 2 briefing) adds a DEPLOY button that starts
+  // the next scene.
+  showEquipment(backTo = 'play', tab, acct = CONTRACT) {
     this._equipTab = tab || this._equipTab || 'gear';
-    const s = this.screen();
-    s.appendChild(this.el('div', 'game-title', 'EQUIPMENT'));
-    s.appendChild(this.el('div', 'money-tag', `BANK: $${save.cash}`));
+    this.acct = acct;
+    const story = acct === STORY;
+    const s = this.screen(story ? 'locker-screen' : '');
+    s.appendChild(this.el('div', 'game-title', story ? 'FIELD LOCKER' : 'EQUIPMENT'));
+    s.appendChild(this.el('div', 'money-tag acct-cash', `${acct.label}: $${acct.cash}`));
 
     const tabs = this.el('div', 'view-tabs');
     for (const [id, label] of [['gear', 'GEAR'], ['skills', 'SKILLS']]) {
@@ -307,9 +397,33 @@ export class UI {
       missions: () => this.showMissions(),
       title: () => this.showTitle(),
       brief: () => this.showBriefing(this._briefN, { instant: true }),
+      story: () => this.showStory(),
+      deploy: () => this.showStory(),
     }[backTo] || (() => this.showPlay());
+    if (backTo === 'deploy') {
+      const n = this.nextStage2Scene();
+      const sc = STAGE2.scenes[n - 1];
+      s.appendChild(this.bigBtn('DEPLOY', `Scene ${n} &mdash; ${sc.name}`, 'primary go deploy-btn', () => this.actions.startScene(n, 2)));
+    }
     if (backTo === 'brief') s.appendChild(this.btn('BACK TO BRIEFING', 'primary', back));
     if (backTo !== 'brief') s.appendChild(this.btn('BACK', '', back));
+  }
+
+  // The Field Locker right after the Stage 2 briefing: DEPLOY goes on to the
+  // next scene, and the first time round the tutorial walks you through it.
+  showLocker({ tutorial = false } = {}) {
+    this.showEquipment('deploy', 'gear', STORY);
+    if (tutorial) {
+      runLockerTutorial(this, {
+        onDone: () => { save.story.stage2.lockerTut = true; persist(); },
+      });
+    }
+  }
+
+  // The Stage 2 scene to play next: the first one not cleared yet (or the
+  // last one there is).
+  nextStage2Scene() {
+    return Math.min(STAGE2.scenes.length, save.story.stage2.scenesCleared + 1);
   }
 
   // Re-open equipment where it was scrolled to (after a purchase or an equip).
@@ -318,7 +432,7 @@ export class UI {
     const top = old ? old.scrollTop : 0;
     const oldCar = old ? old.querySelector('.carousel') : null;
     const left = oldCar ? oldCar.scrollLeft : 0;
-    this.showEquipment(backTo);
+    this.showEquipment(backTo, undefined, this.acct);
     const fresh = this.root.querySelector('.screen');
     if (fresh) fresh.scrollTop = top;
     const freshCar = fresh ? fresh.querySelector('.carousel') : null;
@@ -328,9 +442,10 @@ export class UI {
   /* ---- GEAR tab: a horizontal scrolling wheel of weapons/tools ---- */
 
   gearCarousel(backTo) {
+    const acct = this.acct;
     const items = [...GADGETS, ...ADVANCED_GEAR];
-    const loadout = resolveLoadout(save.gear);
-    const advanced = resolveAdvanced(save.gear);
+    const loadout = resolveLoadout(acct.gear, acct.loadout);
+    const advanced = resolveAdvanced(acct.gear, acct.advancedSlot);
     const redraw = () => this.redrawEquipment(backTo);
 
     const wrap = this.el('div', 'carousel-wrap');
@@ -366,7 +481,8 @@ export class UI {
   // stars, BUY, then whichever equip control applies (2 shared gadget slots,
   // or the single advanced-gear slot).
   gearWheelCard(g, loadout, advanced, redraw) {
-    const lv = save.gear[g.id] || 0;
+    const acct = this.acct;
+    const lv = acct.gear[g.id] || 0;
     const locked = lv === 0;
     const maxed = lv >= g.levels.length;
     const next = maxed ? null : g.levels[lv];
@@ -379,12 +495,12 @@ export class UI {
 
     const row = this.el('div', 'card-row');
     if (!maxed) {
-      const afford = save.cash >= next.price;
-      const buy = this.btn(`BUY &mdash; $${next.price}`, afford ? 'primary' : '', () => {
-        if (save.cash < next.price) return;
-        save.cash -= next.price;
-        save.gear[g.id] = lv + 1;
-        persist();
+      const afford = acct.cash >= next.price;
+      const buy = this.btn(`BUY &mdash; $${next.price}`, `buy-btn ${afford ? 'primary' : ''}`, () => {
+        if (acct.cash < next.price) return;
+        acct.cash -= next.price;
+        acct.gear[g.id] = lv + 1;
+        acct.persist();
         sfx.cash();
         redraw();
       });
@@ -408,7 +524,7 @@ export class UI {
       const on = loadout[i] === id;
       row.appendChild(this.chip(`SLOT ${i + 1}`, slotControl(i), on, 'narrow', () => {
         if (on) return;
-        equipGadget(save.gear, i, id);
+        equipGadget(this.acct.gear, i, id, this.acct);
         redraw();
       }));
     }
@@ -422,7 +538,7 @@ export class UI {
     row.appendChild(this.el('div', 'slot-row-label', 'EQUIP'));
     const on = current === id;
     row.appendChild(this.chip(on ? 'EQUIPPED' : 'EQUIP', '', on, 'narrow', () => {
-      equipAdvanced(save.gear, id);
+      equipAdvanced(this.acct.gear, id, this.acct);
       redraw();
     }));
     return row;
@@ -444,7 +560,8 @@ export class UI {
       sfx.click();
       openId = id;
       const g = items.find(x => x.id === id);
-      const locked = (save.gear[id] || 0) === 0;
+      const gear = this.acct.gear;
+      const locked = (gear[id] || 0) === 0;
       pop = this.el('div', 'intel-pop');
       pop.innerHTML =
         `<div class="intel-top"><span class="gear-ico small${locked ? ' locked' : ''}">${g.icon}</span>` +
@@ -452,7 +569,7 @@ export class UI {
         `<button class="intel-x" aria-label="Close">&times;</button></div>` +
         `<p>${g.desc.toUpperCase()}</p>` +
         `<ul class="gear-tiers">${g.levels.map((l, i) =>
-          `<li class="${i < (save.gear[id] || 0) ? 'on' : ''}"><b>MK.${'I'.repeat(i + 1)}</b>` +
+          `<li class="${i < (gear[id] || 0) ? 'on' : ''}"><b>MK.${'I'.repeat(i + 1)}</b>` +
           `${l.label.replace(/^Mk\.I+\s*(\u2014\s*)?/, '').toUpperCase()}</li>`).join('')}</ul>`;
       pop.querySelector('.intel-x').addEventListener('click', (ev) => { ev.stopPropagation(); close(); sfx.click(); });
       wrap.appendChild(pop);
@@ -481,7 +598,8 @@ export class UI {
     wrap.appendChild(mugPane);
 
     const statsPane = this.el('div', 'skills-stats-pane');
-    const fx = gearEffects(save.gear);
+    const acct = this.acct;
+    const fx = gearEffects(acct.gear);
     const pct = (m) => `${m >= 1 ? '+' : ''}${Math.round((m - 1) * 100)}%`;
     const STAT_LABEL = { shoes: 'SPEED', stamina: 'STAMINA', gloves: 'GRAB REACH', kneepads: 'GET-UP TIME', vest: 'STUN TIME', sack: 'CARRY' };
     const STAT_VALUE = {
@@ -489,7 +607,7 @@ export class UI {
       kneepads: `${(1.05 * fx.recoveryMul).toFixed(2)}s`, vest: `${Math.round(fx.stunMul * 100)}%`, sack: `${fx.carryMax}`,
     };
     for (const g of STAT_GEAR) {
-      const lv = save.gear[g.id] || 0;
+      const lv = acct.gear[g.id] || 0;
       const maxed = lv >= g.levels.length;
       const next = maxed ? null : g.levels[lv];
       const card = this.el('div', 'card skill-card');
@@ -499,12 +617,12 @@ export class UI {
         `${g.desc}<br>${maxed ? '<b>MAXED OUT</b>' : `Next: ${next.label}`}`));
       const row = this.el('div', 'card-row');
       if (!maxed) {
-        const afford = save.cash >= next.price;
-        const upgrade = this.btn(`UPGRADE &mdash; $${next.price}`, afford ? 'primary' : '', () => {
-          if (save.cash < next.price) return;
-          save.cash -= next.price;
-          save.gear[g.id] = lv + 1;
-          persist();
+        const afford = acct.cash >= next.price;
+        const upgrade = this.btn(`UPGRADE &mdash; $${next.price}`, `buy-btn ${afford ? 'primary' : ''}`, () => {
+          if (acct.cash < next.price) return;
+          acct.cash -= next.price;
+          acct.gear[g.id] = lv + 1;
+          acct.persist();
           sfx.levelUp();
           this._justLeveledUp = true;
           this.redrawEquipment(backTo);
@@ -903,7 +1021,7 @@ export class UI {
     if (mission) {
       s.appendChild(this.el('div', 'game-sub',
         sandbox ? `SANDBOX &mdash; ${MAP_NAMES[mission.map].toUpperCase()}`
-        : story ? `${STAGE1.name} &middot; ${mission.name.toUpperCase()}`
+        : story ? `${(STAGES[mission.stage] || STAGE1).name} &middot; ${mission.name.toUpperCase()}`
         : mission.name.toUpperCase()));
     }
     s.appendChild(this.btn('RESUME', 'primary', () => this.actions.resume()));

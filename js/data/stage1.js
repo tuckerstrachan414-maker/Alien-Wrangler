@@ -57,7 +57,7 @@ export const STAGE1 = {
     {
       num: 3, name: 'Highway 29', map: 'highway29', aliens: { grunt: 6 }, goal: 3,
       fled: 'Got away in the semi',
-      outro: 'TO BE CONTINUED<br>The last three are somewhere down Highway 29<br>in the back of a black semi.<br>Scene 4 is on its way.',
+      outro: 'TO BE CONTINUED<br>The last three are somewhere down Highway 29<br>in the back of a black semi.<br>Stage 2 picks up the trail.',
     },
   ],
 };
