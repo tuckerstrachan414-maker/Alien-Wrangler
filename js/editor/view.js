@@ -237,7 +237,7 @@ export class MapView {
     if (L.hides) {
       for (const s of map.hideSpots) {
         if (!onScreen(s.x - 6, s.y - 6, 12, 12)) continue;
-        const r = Math.max(3, 4.5 / Math.sqrt(this.z / 2));
+        const r = Math.max(2.5 / this.z, Math.min(4, 6 / this.z));   // ~4-6 screen px at any zoom
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
         ctx.beginPath(); ctx.arc(s.x, s.y, r + hair * 2, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = s.inside ? COL.inside : COL.behind;

@@ -137,6 +137,7 @@ export class Workspace {
   // A map's draft is dropped once it matches what it would go back to.
   flush() {
     clearTimeout(this.saveTimer);
+    if (!this.pendingSave || !this.pendingSave.size) return;
     for (const id of this.pendingSave || []) {
       const doc = this.docs.get(id);
       if (!doc) continue;

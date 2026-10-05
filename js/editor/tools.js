@@ -60,7 +60,7 @@ export function makeTools(ed) {
 
   /* ---------------- select ---------------- */
   const select = {
-    id: 'select', label: 'Select', icon: '\u{1F446}', key: 'v',
+    id: 'select', label: 'Select', icon: '\u{1F446}', hotkey: 'v',
     help: 'Click to select, drag to move (snaps to the grid you pick). Shift+click adds to the selection; drag on empty ground to box-select. Drag a corner to resize boxes and buildings. Alt+click a road to add a point; double-click a point to remove it.',
     st: null,
     down(p, e) {
@@ -141,7 +141,7 @@ export function makeTools(ed) {
 
   /* ---------------- pan ---------------- */
   const pan = {
-    id: 'pan', label: 'Pan', icon: '✋', key: 'h', cursor: 'grab',
+    id: 'pan', label: 'Pan', icon: '✋', hotkey: 'h', cursor: 'grab',
     help: 'Drag to move around. (Any tool: hold Space, or drag with the middle mouse button or two fingers; scroll or pinch to zoom.)',
     down(p, e) { this.last = { x: e.clientX, y: e.clientY }; },
     move(p, e) { if (!this.last) return; ed.view.pan(e.clientX - this.last.x, e.clientY - this.last.y); this.last = { x: e.clientX, y: e.clientY }; },
@@ -158,7 +158,7 @@ export function makeTools(ed) {
     }
   };
   const brush = {
-    id: 'brush', label: 'Paint', icon: '\u{1F58C}', key: 'b', tiles: true,
+    id: 'brush', label: 'Paint', icon: '\u{1F58C}', hotkey: 'b', tiles: true,
     help: 'Paint ground tiles. Right-click picks up the tile under the cursor. [ and ] change the brush size.',
     down(p, e) {
       if (e.button === 2) { pickTile(p); return; }
@@ -201,7 +201,7 @@ export function makeTools(ed) {
   };
 
   const rect = {
-    id: 'rect', label: 'Rect', icon: '▦', key: 'r', tiles: true,
+    id: 'rect', label: 'Rect', icon: '▦', hotkey: 'r', tiles: true,
     help: 'Drag a rectangle to fill it with the tile.',
     down(p, e) { if (e.button === 2) { pickTile(p); return; } this.r = { tx0: p.tx, ty0: p.ty, tx1: p.tx, ty1: p.ty }; ed.view.request(); },
     move(p) { if (!this.r) return; this.r.tx1 = p.tx; this.r.ty1 = p.ty; ed.view.request(); },
@@ -230,7 +230,7 @@ export function makeTools(ed) {
   };
 
   const fill = {
-    id: 'fill', label: 'Fill', icon: '\u{1FAA3}', key: 'g', tiles: true,
+    id: 'fill', label: 'Fill', icon: '\u{1FAA3}', hotkey: 'g', tiles: true,
     help: 'Flood-fill the patch of matching tiles you click (or every tile of that kind, with "whole map" on).',
     down(p, e) {
       if (e.button === 2) { pickTile(p); return; }
@@ -263,7 +263,7 @@ export function makeTools(ed) {
     ed.ui.onTool();
   };
   const eyedrop = {
-    id: 'eyedrop', label: 'Pick', icon: '\u{1F489}', key: 'i', tiles: true,
+    id: 'eyedrop', label: 'Pick', icon: '\u{1F489}', hotkey: 'i', tiles: true,
     help: 'Click a tile to paint with it (then back to the brush). Click a prop with Alt held to stamp that prop.',
     down(p, e) {
       if (e.altKey) {
@@ -291,7 +291,7 @@ export function makeTools(ed) {
     return o;
   };
   const prop = {
-    id: 'prop', label: 'Prop', icon: '\u{1F333}', key: 'p',
+    id: 'prop', label: 'Prop', icon: '\u{1F333}', hotkey: 'p',
     help: 'Click to place the prop (its base goes where you click). Turn on Scatter and drag to spray them, e.g. a stand of trees.',
     down(p) {
       const o = placeProp(p);
@@ -359,7 +359,7 @@ export function makeTools(ed) {
 
   /* ---------------- hiding spots ---------------- */
   const hide = {
-    id: 'hide', label: 'Hide', icon: '\u{1F441}', key: 's',
+    id: 'hide', label: 'Hide', icon: '\u{1F441}', hotkey: 's',
     help: 'Click to add a hiding spot. "Inside" spots are in cover (crops, bushes); "behind" spots are tucked behind something solid. Aliens only spawn in spots 140px or more from the agent’s spawn.',
     down(p) {
       const a = snapPt(p.x, p.y);
@@ -381,7 +381,7 @@ export function makeTools(ed) {
 
   /* ---------------- collision boxes ---------------- */
   const solid = {
-    id: 'solid', label: 'Block', icon: '\u{1F9F1}', key: 'c',
+    id: 'solid', label: 'Block', icon: '\u{1F9F1}', hotkey: 'c',
     help: 'Drag to draw a collision box (walls, water, thick forest). Hop-over boxes can be jumped; glass blocks bodies but not eyes. Turn on VIEW › Collision to see every box.',
     down(p) { const a = snapPt(p.x, p.y); this.r = { x0: a.x, y0: a.y, x1: a.x, y1: a.y }; if (!ed.layers.solids) { ed.layers.solids = true; ed.saveLayers(); ed.ui.onLayers(); } },
     move(p) { if (!this.r) return; const a = snapPt(p.x, p.y); this.r.x1 = a.x; this.r.y1 = a.y; ed.view.request(); },
@@ -421,7 +421,7 @@ export function makeTools(ed) {
 
   /* ---------------- ground art ---------------- */
   const art = {
-    id: 'art', label: 'Art', icon: '\u{1F3A8}', key: 'd',
+    id: 'art', label: 'Art', icon: '\u{1F3A8}', hotkey: 'd',
     help: 'Paint art into the ground: mud, straw, scorch marks, dropped tools, forest canopy, dirt roads and footprint trails. Roads and trails: click their points, double-click (or Enter) to finish.',
     down(p) {
       const K = PAINT_KINDS[S.art];
@@ -487,7 +487,7 @@ export function makeTools(ed) {
 
   /* ---------------- crop field ---------------- */
   const crops = {
-    id: 'crops', label: 'Crops', icon: '\u{1F33D}', key: 'f',
+    id: 'crops', label: 'Crops', icon: '\u{1F33D}', hotkey: 'f',
     help: 'Drag a rectangle (in tiles) to plant a field: tilled soil with rows of tall corn or sunflowers you can wade through, with hiding spots in it.',
     down(p) { this.r = { tx0: p.tx, ty0: p.ty, tx1: p.tx, ty1: p.ty }; },
     move(p) { this.at = p; if (this.r) { this.r.tx1 = p.tx; this.r.ty1 = p.ty; } ed.view.request(); },
@@ -534,7 +534,7 @@ export function makeTools(ed) {
 
   /* ---------------- buildings ---------------- */
   const building = {
-    id: 'building', label: 'Build', icon: '\u{1F3DA}', key: 'u',
+    id: 'building', label: 'Build', icon: '\u{1F3DA}', hotkey: 'u',
     help: 'Click to put down a walk-in building (its roof lifts while the agent is inside). Resize it and edit its doors in the EDIT panel.',
     spot(p) {
       const D = BUILDING_KINDS[S.building].defaults;
@@ -561,7 +561,7 @@ export function makeTools(ed) {
 
   /* ---------------- erase ---------------- */
   const erase = {
-    id: 'erase', label: 'Erase', icon: '\u{1F9F9}', key: 'e',
+    id: 'erase', label: 'Erase', icon: '\u{1F9F9}', hotkey: 'e',
     help: 'Click (or drag over) props, hiding spots, boxes and ground art to delete them.',
     down(p) { ed.beginWork(); this.on = true; this.zap(p); },
     move(p) { if (this.on) this.zap(p); else this.hover(p); },
