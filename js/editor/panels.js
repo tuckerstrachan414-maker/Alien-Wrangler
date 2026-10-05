@@ -156,7 +156,12 @@ export function renderMapPanel(ed, root, hooks) {
   const info = MAP_INFO[ed.id];
 
   const nameI = h('input', { type: 'text', value: d.name, maxlength: 60 });
-  nameI.addEventListener('change', () => { const v = nameI.value.trim(); if (v) ed.edit('rename map', (doc) => { doc.name = v; }); hooks.mapsChanged(); });
+  nameI.addEventListener('change', () => {
+    const v = nameI.value.replace(/[<>&"'`]/g, '').trim().slice(0, 60);   // plain text (the game's menus use HTML)
+    nameI.value = v || d.name;
+    if (v) ed.edit('rename map', (doc) => { doc.name = v; });
+    hooks.mapsChanged();
+  });
   root.append(h('div.sec', h('div.sec-title', 'MAP', h('span.sub', ed.id)),
     h('div.field', h('div.k', 'Name'), h('div.v', nameI)),
     h('div.note-box', statusText(st, info))));

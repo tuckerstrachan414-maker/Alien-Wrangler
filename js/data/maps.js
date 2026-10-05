@@ -1141,7 +1141,8 @@ export function normalizeDoc(raw, id = raw && raw.id) {
   if (raw.van && raw.van.flip) van.flip = true;
   return {
     format: DOC_FORMAT, version: DOC_VERSION, id: String(id || raw.id || 'map'),
-    name: typeof raw.name === 'string' && raw.name.trim() ? raw.name.trim().slice(0, 60) : String(id || 'Untitled map'),
+    // plain text only: the game's menus put map names into HTML
+    name: (typeof raw.name === 'string' && raw.name.replace(/[<>&"'`]/g, '').trim() ? raw.name.replace(/[<>&"'`]/g, '').trim().slice(0, 60) : String(id || 'Untitled map')),
     tw, th, blend: !!raw.blend, tint: raw.tint === 'night' ? 'night' : null, stealth: !!raw.stealth,
     ground, objects: clone(objects), paint: clone(paint), van, spawn: pt(raw.spawn, { x: van.x + 70, y: van.y + 12 }),
     story: raw.story && typeof raw.story === 'object' ? clone(raw.story) : {},

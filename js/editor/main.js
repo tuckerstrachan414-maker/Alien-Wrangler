@@ -215,7 +215,7 @@ $('#btn-new-map').addEventListener('click', async () => {
   if (!v) return;
   let id = slug(v.name);
   while (ws.mapIds().includes(id)) id = id.replace(/-?\d*$/, '') + '-' + (1 + Math.floor(Math.random() * 99));
-  ws.createMap(id, v.name.trim(), Math.max(12, Math.min(256, Math.round(v.tw))), Math.max(12, Math.min(256, Math.round(v.th))), +v.tile);
+  ws.createMap(id, v.name.replace(/[<>&"'`]/g, '').trim().slice(0, 60) || id, Math.max(12, Math.min(256, Math.round(v.tw))), Math.max(12, Math.min(256, Math.round(v.th))), +v.tile);
   refreshMapList();
   openMap(id);
   toast(`Made "${v.name.trim()}". Add props from the ADD panel.`, 'ok');
@@ -229,7 +229,7 @@ const mapHooks = {
     if (!v) return;
     let id = slug(v.name);
     while (ws.mapIds().includes(id)) id += '-2';
-    ws.duplicateMap(ed.id, id, v.name.trim());
+    ws.duplicateMap(ed.id, id, v.name.replace(/[<>&"'`]/g, '').trim().slice(0, 60) || id);
     openMap(id);
   },
   exportMap() {
