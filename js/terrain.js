@@ -65,6 +65,8 @@ function edgeDist(dx, dy, px, py) {
 
 // Pixel data of a 16x16 tile texture, cached per tile set.
 const TEX_CACHE = new WeakMap();
+// Forget the cached pixels (a tile was repainted in the asset editor).
+export function clearTexCache(tiles) { TEX_CACHE.delete(tiles); }
 export function texOf(tiles, id) {
   let cache = TEX_CACHE.get(tiles);
   if (!cache) TEX_CACHE.set(tiles, cache = new Map());

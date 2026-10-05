@@ -1,6 +1,6 @@
 import { buildTiles, buildActors, buildVan, buildUfo, T } from './data/sprites.js';
 import { loadPngProps } from './data/pngProps.js';
-import { getMission, GEAR } from './data/missions.js';
+import { getMission, GEAR, sandboxMission, MAP_LIST } from './data/missions.js';
 import { loadSave, save, persist } from './save.js';
 import {
   setupInput, consumePress, clearInput, showGadgets,
@@ -8,7 +8,9 @@ import {
 } from './input.js';
 import { Game } from './game.js';
 import { UI } from './ui.js';
-import { initVersionBadge } from './version.js';
+import { initVersionBadge, setBadgeNote } from './version.js';
+import { registerPngProps } from './data/assets.js';
+import { loadEditsForGame } from './edits.js';
 import { buildVoss } from './data/storyArt.js';
 import { STAGE1, stage1Scene } from './data/stage1.js';
 import { Intro } from './intro.js';
@@ -47,6 +49,20 @@ try {
   assets.tiles[T.DRAIN] = t.drain;
 } catch (err) {
   console.warn('Maple Street PNG props failed to load, using procedural fallback:', err);
+}
+registerPngProps(assets.pngProps);
+
+// Anything changed in the map / asset editor (editor.html): published files
+// in maps/, and this browser's drafts on top. In place before anything is
+// drawn, so repainted sprites show up everywhere (the HUD icons included).
+try {
+  const edits = await loadEditsForGame(assets);
+  const local = [];
+  if (edits.localMaps.length) local.push(`${edits.localMaps.length} map${edits.localMaps.length > 1 ? 's' : ''}`);
+  if (edits.localAssets) local.push('assets');
+  if (local.length) setBadgeNote(`LOCAL EDITS: ${local.join(' + ')}`);
+} catch (err) {
+  console.warn('Map editor edits failed to load, playing the built-in maps:', err);
 }
 
 // ---- HUD pixel icons (drawn in code, match the game art) ----
@@ -394,7 +410,8 @@ function drawMenuBackdrop(dt) {
 let last = performance.now();
 function frame(now) {
   requestAnimationFrame(frame);
-  const dt = Math.min(0.05, (now - last) / 1000);
+  // (a frame's timestamp can come in a hair before `last`, never step back in time)
+  const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
   last = now;
 
   pollGamepads();
@@ -436,6 +453,21 @@ setControlMode(save.controlMode);
 refreshHints();
 ui.showTitle();
 requestAnimationFrame(frame);
+
+// Straight in from the map editor's PLAY TEST:
+//   ?playtest=<map id>  free play on that map with your Sandbox roster + gear
+//   ?scene=<n>          Stage 1 scene n, as the story plays it
+{
+  const q = new URLSearchParams(location.search);
+  const pt = q.get('playtest'), scene = +q.get('scene');
+  if (pt && MAP_LIST.some(m => m.id === pt)) {
+    const cfg = { ...save.sandbox, map: pt };
+    if (!Object.values(cfg.aliens || {}).some(n => n > 0)) cfg.aliens = { grunt: 2, scout: 1 };
+    enterMission(sandboxMission(cfg));
+  } else if (scene >= 1 && scene <= STAGE1.scenes.length) {
+    if (scene > 1) startSceneWithCard(scene); else enterMission(stage1Scene(1));
+  }
+}
 
 // debug/testing hook
 window.__aw = { game, ui, save, get state() { return state; }, get intro() { return intro; } };

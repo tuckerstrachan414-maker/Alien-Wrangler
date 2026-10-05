@@ -1,6 +1,6 @@
 import {
   MISSIONS, getMission, GEAR, GADGETS, ADVANCED_GEAR, STAT_GEAR, MAP_LIST, SANDBOX_TIMES,
-  sandboxMission, gearMaxLevel, abandonFee, gearEffects,
+  sandboxMission, gearMaxLevel, abandonFee, gearEffects, mapDisplayName,
 } from './data/missions.js';
 import { save, persist, resetSave } from './save.js';
 import { sfx } from './audio.js';
@@ -19,6 +19,9 @@ const MAP_NAMES = {
   barnyard: 'Barnyard',
   highway29: 'Highway 29',
 };
+
+// a map's name, as the map editor may have renamed it (or made it)
+const mapName = (id) => mapDisplayName(id, MAP_NAMES[id] || id);
 
 const TIER_NAMES = { grunt: 'Grunt', scout: 'Scout', trooper: 'Trooper', elite: 'Elite' };
 const TIERS = ['grunt', 'scout', 'trooper', 'elite'];
@@ -211,7 +214,7 @@ export class UI {
       head.appendChild(this.el('div', 'card-pay', `$${m.pay}`));
       card.appendChild(head);
       card.appendChild(this.el('div', 'card-desc',
-        `${MAP_NAMES[m.map]}<br>${this.missionRoster(m)} &middot; ${m.time}s &middot; -$${m.escapeCost}/escape` +
+        `${mapName(m.map)}<br>${this.missionRoster(m)} &middot; ${m.time}s &middot; -$${m.escapeCost}/escape` +
         (locked ? '<br>Clear the previous mission to unlock.' : '') +
         (m.desc && !locked ? `<br><i>${m.desc}</i>` : '')));
       if (!locked) {
@@ -673,6 +676,11 @@ export class UI {
       reset.style.fontSize = '9px';
       this._confirmReset = false;
       s.appendChild(reset);
+
+      /* ---- the map + asset editor (its own page, editor.html) ---- */
+      s.appendChild(this.el('div', 'section-label', 'MAP EDITOR'));
+      s.appendChild(this.el('div', 'tip', 'Edit the maps and repaint the art. Your changes show up here straight away.'));
+      s.appendChild(this.btn('OPEN MAP EDITOR', '', () => { location.href = 'editor.html'; }));
     }
 
     s.appendChild(this.el('div', 'menu-spacer'));
@@ -844,7 +852,7 @@ export class UI {
       : r.cleared ? 'MISSION CLEARED' : 'MISSION FAILED';
     s.appendChild(this.el('div', `result-verdict ${r.cleared && !r.abandoned ? 'ok' : 'bad'}`, verdict));
     s.appendChild(this.el('div', 'game-sub',
-      sandbox ? MAP_NAMES[r.mission.map].toUpperCase() : r.mission.name.toUpperCase()));
+      sandbox ? mapName(r.mission.map).toUpperCase() : r.mission.name.toUpperCase()));
 
     const line = (label, val, cls = '') =>
       s.appendChild(this.el('div', 'result-line', `<span>${label}</span><b class="${cls}">${val}</b>`));
@@ -902,7 +910,7 @@ export class UI {
     s.appendChild(this.el('div', 'game-title', 'PAUSED'));
     if (mission) {
       s.appendChild(this.el('div', 'game-sub',
-        sandbox ? `SANDBOX &mdash; ${MAP_NAMES[mission.map].toUpperCase()}`
+        sandbox ? `SANDBOX &mdash; ${mapName(mission.map).toUpperCase()}`
         : story ? `${STAGE1.name} &middot; ${mission.name.toUpperCase()}`
         : mission.name.toUpperCase()));
     }

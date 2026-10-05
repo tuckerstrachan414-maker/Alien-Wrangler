@@ -126,6 +126,21 @@ export const MAP_LIST = [
 
 export const SANDBOX_TIMES = [120, 180, 300, 600, 0];   // 0 = no time limit
 
+// Maps made or renamed in the map editor (edits.js calls this at boot):
+// new ones join the Sandbox list, renamed ones show their new name.
+const MAP_RENAMES = {};
+export function addEditedMaps(list) {
+  for (const { id, name, custom } of list) {
+    const known = MAP_LIST.find(m => m.id === id);
+    if (custom && !known) MAP_LIST.push({ id, name, note: 'Made in the map editor' });
+    else if (known && name && name !== known.name) { known.name = name; MAP_RENAMES[id] = name; }
+    if (custom) MAP_RENAMES[id] = name;
+  }
+}
+export function mapDisplayName(id, fallback = id) {
+  return MAP_RENAMES[id] || fallback;
+}
+
 export function sandboxMission(cfg) {
   const aliens = {};
   for (const [tier, n] of Object.entries(cfg.aliens || {})) if (n > 0) aliens[tier] = n;

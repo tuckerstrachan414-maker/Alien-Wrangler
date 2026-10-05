@@ -23,6 +23,75 @@ fullscreen play with no browser bars. Works in both **portrait and landscape** �
 rotate the phone and the controls and camera adapt (landscape shows a wider strip of
 the map at the same zoom).
 
+## 🗺️ Map + asset editor
+
+**https://tuckerstrachan414-maker.github.io/Alien-Wrangler/editor.html** (or **SETTINGS → OPEN MAP EDITOR** in the game)
+
+A separate page for editing the game's maps and repainting its art. It runs the game's own map code, so what you
+see in it is exactly what you'll play. It works on a computer (mouse + keyboard) and on a phone or tablet (tap, drag,
+pinch to zoom, two fingers to pan).
+
+**MAPS mode.** Pick a map at the top (every built-in map, Highway 29's set pieces, or **+ NEW** for a brand-new one).
+
+| Tool | What it does |
+|---|---|
+| **Select** (V) | Click to select, drag to move (snap to 1 px / 4 / 8 / a 16 px tile). Shift+click or drag a box to select several. Drag a corner to resize collision boxes, buildings and rectangles of ground art. Alt+click a road to add a point; double-click a point to remove it |
+| **Paint / Rect / Fill / Pick** (B R G I) | Ground tiles: a brush (sizes 1-7, `[` `]`), rectangles, flood fill (or replace a tile everywhere), and an eyedropper (right-click with any tile tool picks up a tile too) |
+| **Prop** (P) | Stamp any prop: its base goes where you click. **Scatter** sprays them as you drag (a stand of trees) |
+| **Crops** (F) | Drag a rectangle to plant a field: tilled soil, rows of tall corn or sunflowers to wade through, hiding spots in it |
+| **Build** (U) | A walk-in **barn** or **greenhouse**: the roof lifts while the agent is inside. Resize it and set its doors, floor and glass in EDIT. Dragging one brings everything inside along (hold Alt to move just the building) |
+| **Hide** (S) | Hiding spots: "inside" (in cover) or "behind" (tucked behind something solid) |
+| **Block** (C) | Invisible collision boxes: solid, hop-over, or glass (blocks bodies, not eyes) |
+| **Art** (D) | Painted into the ground: dirt roads, footprint trails, forest canopy, scorch marks, mud, straw, grain, dropped tools, buckets, boards, eggs, a broken pot |
+| **Erase** (E) | Click or drag over things to delete them |
+
+The van and the agent's spawn are always on the map: select and drag them. Story maps show their markers too:
+Farm Fields' **story road** (the stampede runs up it) and **tutorial hider**, the Barnyard's story road, **tree line**
+and **walk-in start**. Move them and the scene follows.
+
+The side panel: **ADD** (tiles, props, buildings, ground art, crops), **EDIT** (every field of what's selected: exact
+positions, collision and hiding flags, a prop's own hiding spot / smoke / scorch mark, building doors and floor, road
+textures, drawing order), **VIEW** (show/hide collision boxes, the aliens' nav grid, hiding spots, roofs, the tile grid,
+night tint...), **MAP** (rename, resize, soft ground edges, night, the noise meter, revert, duplicate, delete) and
+**CHECK**, which catches edits that would break the game before you play them: a spawn inside a wall, a van door the
+agent can't reach, hiding spots walled off from the agent, a story road with something solid across it, missing art.
+
+Undo / redo (Ctrl+Z / Ctrl+Shift+Z), copy / paste at the cursor (Ctrl+C / Ctrl+V), duplicate (Ctrl+D), Delete,
+arrow keys to nudge (Shift: a whole tile). **MORE → Keyboard shortcuts** lists the rest.
+
+**ASSETS mode.** Repaint any prop, ground tile or character (the agent, all four aliens, the van, the UFO) pixel by
+pixel: pen, eraser, fill, colour picker, lines, boxes, shift (tiles wrap round, so you can fix seams), flip, mirror
+drawing, the game's own colour palette. For props, drag the **collision box**, and set hop-over / aliens hide in it /
+tall. Import or export PNGs, resize the canvas, or **+ NEW PROP** / **+ NEW TILE** to make your own (new tiles can blend
+softly with grass, soil, forest...). New props show up in the MAPS palette and **PLACE ON MAP** drops you straight in.
+
+**Highway 29** grows its woods from code as the agent walks, so there's no map to paint, but its hand-placed set
+pieces can be moved, added and removed: the **gas station** lot (move the store and the getaway cutscene's trucker
+walks out of its new door) and the **clearing**.
+
+### How changes get into the game
+
+1. **Drafts.** Every change is saved in your browser the moment you make it. The game *in the same browser* plays your
+   drafts straight away: **PLAY TEST** opens the map (free play, or the story scene for a Stage 1 map). The build tag at
+   the top of the game says **LOCAL EDITS** while drafts are in play (**MORE** in the editor turns that off). New maps
+   show up in Sandbox. Nobody else sees drafts.
+2. **PUBLISH** puts them in the game for everyone by writing them into the repo's `maps/` folder:
+   - **Commit to GitHub**: one commit straight to the repo, from any device (a phone included). It needs a
+     *fine-grained personal access token*: GitHub → Settings → Developer settings → Personal access tokens →
+     Fine-grained tokens → Generate new token; *Repository access*: only this repo; *Permissions → Contents*: Read and
+     write. Paste it in (tick "remember" to keep it on that device). Publishing to `Alien-Wrangler-Main` redeploys the
+     game in about a minute.
+   - **Save into the repo on this computer**: run `node tools/editor-server.mjs` (serves the game + editor on
+     http://localhost:8080 and writes straight into `maps/`), then commit.
+   - **Save into a folder** (Chrome / Edge on a computer): pick your copy of the repo.
+   - **Download .zip**: the `maps/` folder, to drop into the repo yourself.
+3. A draft beats a published file, which beats the map built into the code. **MAP → Revert** drops a draft;
+   **Reset to built-in** removes a published edit at the next publish.
+
+`maps/manifest.json` lists the edited maps (`maps/<id>.json` each, one ground row per line so diffs are readable)
+and whether there's a `maps/assets.json` (repainted and new art, as PNGs). **MORE → Export / Import** moves them
+between browsers.
+
 ## 📖 Story — Stage 1 (tutorial)
 
 **STORY** on the title screen. Stage 1 teaches the controls and the basics of the job. There's
@@ -181,6 +250,8 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 
 13 missions across the five maps, then endless **Overtime Shifts** (rotating every map) that keep scaling up.
 
+Every map can be changed in the [map editor](#️-map--asset-editor), and new maps made there show up in Sandbox.
+
 ## 🧰 Equipment shop
 
 Track Shoes · Field Training (stamina) · Grip Gloves · Kneepads · Alien Sack · Stun-Proof Vest
@@ -261,10 +332,29 @@ js/data/barnyardArt.js  Scene 2 art: walk-in barn + greenhouse (roof shell + cut
 js/data/highwayArt.js   Scene 3 art: woods props, the semi, the trucker, a car, gas station + store, the agent's crawl, ground painters
 js/data/highwayStrip.js Scene 3 streaming world: lays out and paints the woods a piece at a time from world coordinates, slides the canvas along
 js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines (every scene)
-js/data/maps.js     the seven maps, and walk-in buildings (MapBuilder.building)
+js/data/maps.js     the maps: builders that record a map doc, compileMap (doc -> the map the game plays), story rigs, walk-in buildings
+js/data/assets.js   every prop under a stable id (tree, yard:well, hwy:boulder, png:houseI, crop:corn:224:10, custom:*), overrides
+js/edits.js         loads map/asset edits at boot: maps/ (published) + this browser's drafts
+js/groundRender.js  paints a map's ground canvas (tiles, soft edges, roads + decals); shared by the game and the editor
+editor.html         the map + asset editor (css/editor.css, js/editor/*)
+js/editor/main.js   editor boot + wiring; mapEditor.js (selection, moving, picking), view.js (viewport), tools.js,
+                    inspector.js + panels.js (side panel), validate.js (CHECK), assetEditor.js (pixel editor),
+                    stripEditor.js (Highway 29 set pieces), publish.js + zip.js (publishing), workspace.js (drafts, undo)
+maps/               published edits from the editor (manifest.json, <map>.json, assets.json)
+tools/editor-server.mjs  local server for the game + editor that saves the editor's PUBLISH into maps/
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
 js/save.js          localStorage save (progress + settings + sandbox loadout)
 js/audio.js         WebAudio synth SFX
 ```
 
-Run locally: any static server, e.g. `npx http-server` in the repo root.
+Run locally: any static server, e.g. `npx http-server` in the repo root, or `node tools/editor-server.mjs` (the same,
+plus the editor's PUBLISH saves into `maps/`).
+
+**Maps are data.** Each builder in `js/data/maps.js` places things through `MapBuilder`, which records a *map doc*
+(ground grid, an ordered list of props / collision boxes / hiding spots / buildings, ground-art ops, van, spawn, story
+markers), and the game always builds the map it plays from a doc (`compileMap`). A doc in `maps/<id>.json` (or an
+editor draft) replaces the builder's, so once a map has a published edit, **changes to its builder code won't show**
+until that file is removed (MAP → Reset to built-in in the editor, then publish) or edited to match. Story fields the
+directors read (`road`, `roadX`, `exit`, `tutorSpot`, `barn`, `treeLine`, `arrive`) are worked out from the doc in
+`RIGS`, so an edited map keeps its scene working. New props must be registered in `js/data/assets.js` to be placeable
+and saveable.

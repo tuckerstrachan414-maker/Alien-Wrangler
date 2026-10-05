@@ -29,6 +29,7 @@ import { buildNav } from '../nav.js';
 import {
   CANOPY_FLOOR, drawCrown, litterCell, spiralLeaves, strayLeaf, dapple, creekPixel, roadPixel, ROAD,
 } from './highwayArt.js';
+import { getAsset } from './assets.js';
 
 export const CW = 256;                  // piece width
 export const NP = 7;                    // pieces in the canvas
@@ -55,12 +56,48 @@ export const STATION = {                               // local to the final sec
 
 const HUNT = new Set(['start', 'forest', 'clearing', 'exit']);
 
+// The hand-placed set pieces, which the map editor can rearrange (a
+// highway29 map doc: { strip: true, station: [...], clearing: [...] }):
+//   station   the gas station lot and the verge: { a: asset id, x: left edge
+//             (local to the final section), base: ground line }
+//   clearing  the odd stumps and rocks in the clearing: { a, x: middle
+//             (local to its piece), base }
+// The store and the canopy anchor the getaway cutscene (the trucker walks
+// out of the store's door), so wherever they're put, the scene follows.
+export const STATION_SET = [
+  ['hwy:sign29', 82, 158], ['hwy:store', STATION.store.x, STATION.store.base], ['hwy:canopy', STATION.canopy.x, STATION.canopy.base],
+  ['hwy:iceBox', 420, 150], ['trashcan', 270, 150], ['hwy:priceSign', 214, 392], ['lamppost', 440, 112], ['lamppost', 440, 386],
+  // a few bushes round the back of the lot, and along the woods' edge on
+  // the near side of the road (never in the middle, where the chase ends)
+  ...[[478, 120], [516, 300], [552, 190], [490, 380], [30, 96], [44, 372], [8, 330]].map(([x, y]) => ['bush', x, y]),
+].map(([a, x, base]) => ({ a, x, base }));
+export const CLEARING_SET = [['hwy:stump', 40, 160], ['hwy:stump', 214, 250], ['hwy:mossRock', 70, 272], ['hwy:bracken', 196, 138]]
+  .map(([a, x, base]) => ({ a, x, base }));
+
+// The set pieces + station anchors a strip is built with.
+export function stripSetPieces(edit) {
+  const list = (v, d) => (Array.isArray(v) ? v : d).filter(q => q && typeof q.a === 'string' && isFinite(q.x) && isFinite(q.base))
+    .map(q => ({ a: q.a, x: +q.x, base: +q.base }));
+  const set = list(edit && edit.station, STATION_SET);
+  const clearing = list(edit && edit.clearing, CLEARING_SET);
+  const station = JSON.parse(JSON.stringify(STATION));
+  for (const key of ['store', 'canopy']) {
+    const q = set.find(o => o.a === `hwy:${key}`);
+    if (q) station[key] = { x: q.x, base: q.base };
+  }
+  return { station, set, clearing };
+}
+
 export class HighwayStrip {
   // props: the shared prop set (maps.js PROPS), X: highwayArt props
-  constructor(map, props, X) {
+  constructor(map, props, X, edit = null) {
     this.map = map;
     this.P = props;
     this.X = X;
+    const sp = stripSetPieces(edit);
+    this.station = sp.station;          // STATION, with the store + canopy wherever they've been put
+    this.setPieces = sp.set;
+    this.clearingPieces = sp.clearing;
     this.ox = 0;                        // world x of canvas column 0
     this.kinds = [];
     this.queue = [];                    // kinds to stream in next
@@ -335,9 +372,12 @@ export class HighwayStrip {
     }
     if (kind === 'clearing') {
       // a couple of old stumps and a rock round the edge of the clearing
-      for (const [lx, y, def] of [[40, 160, X.stump], [214, 250, X.stump], [70, 272, X.mossRock], [196, 138, X.bracken]]) {
-        this.put(def, wx0 + lx - def.img.width / 2, y - def.img.height);
-      }
+      this.clearingPieces.forEach((q, i) => {
+        const def = getAsset(q.a);
+        if (!def) return;
+        const pr = this.put(def, wx0 + q.x - def.img.width / 2, q.base - def.img.height);
+        pr.setPiece = { list: 'clearing', i };
+      });
     }
   }
 
@@ -367,22 +407,14 @@ export class HighwayStrip {
   // Highway 29 and the gas station, one piece of the section at a time
   // (each thing belongs to the piece its left edge falls in).
   layStation(s, wx0) {
-    const X = this.X, F0 = this.finalAt * CW;
+    const F0 = this.finalAt * CW;
     const here = (lx) => F0 + lx >= wx0 && F0 + lx < wx0 + CW;
-    const at = (lx, def, base, opts) => { if (here(lx)) this.put(def, F0 + lx, base - def.img.height, opts); };
-    at(82, X.sign29, 158);
-    at(STATION.store.x, X.store, STATION.store.base);
-    at(STATION.canopy.x, X.canopy, STATION.canopy.base);
-    at(420, X.iceBox, 150);
-    at(270, this.P.trashcan, 150);
-    at(214, X.priceSign, 392);
-    at(440, this.P.lamppost, 112);
-    at(440, this.P.lamppost, 386);
-    // a few bushes round the back of the lot, and along the woods' edge on
-    // the near side of the road (never in the middle, where the chase ends)
-    for (const [lx, y] of [[478, 120], [516, 300], [552, 190], [490, 380], [30, 96], [44, 372], [8, 330]]) {
-      at(lx, this.P.bush, y);
-    }
+    this.setPieces.forEach((q, i) => {
+      const def = getAsset(q.a);
+      if (!def || !here(q.x)) return;
+      const pr = this.put(def, F0 + q.x, q.base - def.img.height);
+      pr.setPiece = { list: 'station', i };
+    });
   }
 
   /* ---------------- painting ---------------- */
