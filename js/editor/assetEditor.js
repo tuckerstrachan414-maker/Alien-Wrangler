@@ -160,6 +160,7 @@ export class AssetEditor {
     }
     this.work = copyCanvas(img);
     if (this.toolId === 'box' && kind !== 'prop') this.toolId = 'pencil';
+    this.userZoomed = false;
     this.fit();
     this.renderList();
     this.renderTools();
@@ -291,7 +292,7 @@ export class AssetEditor {
     if (v.start === 'png') {
       const [f] = await pickFile('image/png,image/*');
       if (!f) return;
-      img = await fileToCanvas(f);
+      try { img = await fileToCanvas(f); } catch (e) { toast(e.message, 'err', 5000); return; }
     } else if (v.start === 'copy' && cur) img = copyCanvas(cur.img);
     else img = canvas(Math.max(1, Math.min(512, Math.round(v.w))), Math.max(1, Math.min(512, Math.round(v.h))))[0];
     let id = `custom:${slug(v.name)}`;
@@ -320,7 +321,7 @@ export class AssetEditor {
     if (v.start === 'png') {
       const [f] = await pickFile('image/png,image/*');
       if (!f) return;
-      img = fitTo(await fileToCanvas(f), TILE, TILE);
+      try { img = fitTo(await fileToCanvas(f), TILE, TILE); } catch (e) { toast(e.message, 'err', 5000); return; }
     } else if (v.start === 'copy') img = copyCanvas(this.assets.tiles[cur]);
     else { img = canvas(TILE, TILE)[0]; const x = img.getContext('2d'); x.fillStyle = '#4a9a42'; x.fillRect(0, 0, TILE, TILE); }
     let id = CUSTOM_TILE_BASE;
@@ -371,7 +372,8 @@ export class AssetEditor {
   async importPng() {
     const [f] = await pickFile('image/png,image/*');
     if (!f) return;
-    let img = await fileToCanvas(f);
+    let img;
+    try { img = await fileToCanvas(f); } catch (e) { toast(e.message, 'err', 5000); return; }
     const want = this.kind === 'tile' ? [TILE, TILE] : this.kind === 'actor' ? [this.work.width, this.work.height] : null;
     if (want && (img.width !== want[0] || img.height !== want[1])) {
       toast(`That PNG is ${img.width}\u00D7${img.height}; this one has to be ${want[0]}\u00D7${want[1]}, so it was cropped / padded from the top-left`, 'warn', 5000);
@@ -463,6 +465,7 @@ export class AssetEditor {
   }
 
   zoom(d) {
+    this.userZoomed = true;
     const r = this.wrap.getBoundingClientRect();
     const cx = r.width / 2, cy = r.height / 2;
     const wx = (cx - this.px) / this.z, wy = (cy - this.py) / this.z;
@@ -487,8 +490,9 @@ export class AssetEditor {
     this.dpr = Math.min(3, window.devicePixelRatio || 1);
     this.cv.width = Math.max(1, Math.round(r.width * this.dpr));
     this.cv.height = Math.max(1, Math.round(r.height * this.dpr));
-    if (!this.fitted && r.width > 50) { this.fitted = true; this.fit(); }
-    this.draw();
+    // keep the picture fitted to the canvas until you zoom it yourself
+    if (!this.userZoomed && r.width > 50) this.fit();
+    else this.draw();
   }
 
   transform(dir) {
@@ -858,9 +862,13 @@ function usedColors(img, max) {
   return [...n.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(e => e[0]);
 }
 
+// A picked image file as a canvas (sprites, not photos: 512px at most).
 async function fileToCanvas(f) {
   const url = URL.createObjectURL(f);
-  try { return await decodePng(url); } finally { URL.revokeObjectURL(url); }
+  let c;
+  try { c = await decodePng(url); } finally { URL.revokeObjectURL(url); }
+  if (c.width > 512 || c.height > 512) throw new Error(`that image is ${c.width}\u00D7${c.height}; sprites can be up to 512\u00D7512 pixels`);
+  return c;
 }
 
 // Crop / pad an image to exactly w x h (top-left aligned).

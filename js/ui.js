@@ -676,6 +676,11 @@ export class UI {
       reset.style.fontSize = '9px';
       this._confirmReset = false;
       s.appendChild(reset);
+
+      /* ---- the map + asset editor (its own page, editor.html) ---- */
+      s.appendChild(this.el('div', 'section-label', 'MAP EDITOR'));
+      s.appendChild(this.el('div', 'tip', 'Edit the maps and repaint the art. Your changes show up here straight away.'));
+      s.appendChild(this.btn('OPEN MAP EDITOR', '', () => { location.href = 'editor.html'; }));
     }
 
     s.appendChild(this.el('div', 'menu-spacer'));

@@ -2,7 +2,7 @@
 // this browser (saved on every change, so nothing is ever lost and the
 // game's Play Test sees them at once), undo history per map, the working
 // assets bundle, and what's changed since the last publish.
-import { MAP_INFO, defaultMapDoc, normalizeDoc, blankDoc } from '../data/maps.js';
+import { MAP_INFO, defaultMapDoc, normalizeDoc, blankDoc, clearDefaultDocs } from '../data/maps.js';
 import { readDrafts, writeDrafts, emptyAssetBundle } from '../edits.js';
 
 const json = (o) => JSON.stringify(o);
@@ -250,6 +250,12 @@ export class Workspace {
 
   // The asset editor changed the working bundle.
   assetsChanged() {
+    // unedited built-in maps come from the builders, which place some props
+    // by their size: rebuild them so they match what the game will build
+    clearDefaultDocs();
+    for (const id of [...this.docs.keys()]) {
+      if (!this.drafts.maps[id] && !this.published.maps[id] && MAP_INFO[id] && !this.hist.get(id)?.past.length) this.docs.delete(id);
+    }
     const pub = this.published.assets || emptyAssetBundle();
     this.drafts.assets = same(normalizeBundle(pub), normalizeBundle(this.assetBundle)) ? null : clone(this.assetBundle);
     this.drafts.assetsUpdated = Date.now();

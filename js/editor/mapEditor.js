@@ -75,6 +75,7 @@ export class MapEditor {
       }
       if (evt === 'assets' && this.id) {
         if (this.strip) { this.strip.grounds = {}; this.strip.rebuild(); return; }
+        if (!this.working) this.doc = ws.doc(this.id);
         this.tileSig = ''; this.paintSig = ''; this.rebuild();
       }
     });
@@ -119,7 +120,13 @@ export class MapEditor {
       this.tileSig = tsig;
       this.paintSig = '';
     }
-    if (!quick && psig !== this.paintSig) {
+    // mid-drag, repaint roads + decals at most every ~70ms (a slow phone
+    // would otherwise lag behind the finger); the drop always repaints
+    const throttle = this.working && psig !== this.paintSig && performance.now() - (this.lastPaint || 0) < 70;
+    if (throttle) { clearTimeout(this.paintTimer); this.paintTimer = setTimeout(() => this.rebuild(), 80); }
+    if (!quick && !throttle && psig !== this.paintSig) {
+      clearTimeout(this.paintTimer);
+      this.lastPaint = performance.now();
       const [c, g] = canvas(this.map.w, this.map.h);
       g.drawImage(this.base, 0, 0);
       runPaintOps(g, tiles, this.map.paintOps.concat(this.map.decals));

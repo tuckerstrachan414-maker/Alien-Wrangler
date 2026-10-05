@@ -254,12 +254,26 @@ main { flex: 1; min-height: 0; display: flex; }
   .tool-sep { width: 1px; height: auto; margin: 2px 3px; }
   .tool-btn { flex: none; }
   #viewport { order: 1; }
-  #sidebar { order: 3; width: auto; height: 42vh; border-left: 0; border-top: 1px solid var(--line); flex: none; padding-bottom: var(--safe-b); }
+  #sidebar { order: 3; width: auto; height: 36vh; border-left: 0; border-top: 1px solid var(--line); flex: none; padding-bottom: var(--safe-b); }
+  /* tool options: one compact row that scrolls sideways, so the map stays visible */
+  #tool-options { flex-wrap: nowrap; overflow-x: auto; top: 4px; left: 4px; right: 4px; gap: 5px; scrollbar-width: none; font-size: 11px; }
+  #tool-options::-webkit-scrollbar { display: none; }
+  #tool-options .opt-group { flex: none; flex-wrap: nowrap; padding: 3px 6px; gap: 6px; }
+  #tool-options label { white-space: nowrap; }
+  #tool-options .opt-group.help { white-space: normal; max-width: 78vw !important; }
+  #view-buttons button { min-width: 30px; height: 28px; }
+  #status { display: none; }
   #sidebar.collapsed { height: auto; }
   #sidebar.collapsed .tab-body { display: none !important; }
   #asset-mode { flex-direction: column; overflow-y: auto; }
   .ae-browser { width: auto; height: 34vh; border-right: 0; border-bottom: 1px solid var(--line); flex: none; }
-  .ae-center { min-height: 55vh; flex: none; }
+  .ae-center { min-height: 64vh; flex: none; }
+  .ae-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .ae-canvas-wrap { min-height: 38vh; }
+  .ae-colors { flex-wrap: nowrap; }
+  .ae-colors > div { overflow-x: auto; scrollbar-width: none; }
+  .ae-pal { flex-wrap: nowrap; }
+  .ae-pal button { flex: none; width: 22px; height: 22px; }
   .ae-side { width: auto; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
 }
 

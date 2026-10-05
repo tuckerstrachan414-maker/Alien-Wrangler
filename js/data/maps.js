@@ -1149,7 +1149,7 @@ export function normalizeDoc(raw, id = raw && raw.id) {
   };
 }
 
-const DEFAULT_DOCS = new Map();   // the builders' docs (they never change once built)
+const DEFAULT_DOCS = new Map();   // the builders' docs (rebuilt if a prop's size changes: clearDefaultDocs)
 let EDITS = {};                    // id -> doc that replaces the builder's (maps/<id>.json or a draft)
 
 // Highway 29's doc: just its set pieces (the rest streams in from code).
@@ -1165,6 +1165,10 @@ export function defaultMapDoc(id, assets) {
   if (!DEFAULT_DOCS.has(key)) DEFAULT_DOCS.set(key, toDoc(info.build(assets), id));
   return clone(DEFAULT_DOCS.get(key));
 }
+
+// The builders place some props by their size (trees centred on a spot):
+// after the asset editor resizes one, build the default docs afresh.
+export function clearDefaultDocs() { DEFAULT_DOCS.clear(); }
 
 // docs: { id: doc } for every edited (or brand-new) map.
 export function setMapEdits(docs) { EDITS = { ...(docs || {}) }; }

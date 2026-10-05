@@ -85,11 +85,12 @@ function refreshOptions() {
   const o = ed.tool.options ? ed.tool.options() : null;
   if (o) for (const n of [].concat(o)) if (n) box.appendChild(n);
   if (!ed.tool.help) return;
-  let show = true;
-  try { show = localStorage.getItem('aw-editor-help') !== '0'; } catch { /* fine */ }
+  // tips on by default on a big screen, off on a phone (they'd cover the map)
+  let show = window.innerWidth > 900;
+  try { const v = localStorage.getItem('aw-editor-help'); if (v !== null) show = v !== '0'; } catch { /* fine */ }
   const toggle = (on) => { try { localStorage.setItem('aw-editor-help', on ? '1' : '0'); } catch { /* fine */ } refreshOptions(); };
   box.appendChild(show
-    ? h('div.opt-group', { style: { maxWidth: '520px', color: '#8f9bb8' } }, ed.tool.help,
+    ? h('div.opt-group.help', { style: { maxWidth: '520px', color: '#8f9bb8' } }, ed.tool.help,
       h('button.btn.small', { type: 'button', title: 'Hide tool tips', onclick: () => toggle(false) }, 'HIDE'))
     : h('button.btn.small', { type: 'button', title: 'Show tips for this tool', onclick: () => toggle(true) }, '? HELP'));
 }
