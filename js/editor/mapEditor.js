@@ -68,11 +68,15 @@ export class MapEditor {
     this.tools = {};
     ws.on((evt, data) => {
       if (evt === 'doc' && data.id === this.id && !this.working) {
+        if (this.strip) { this.strip.refresh(); return; }
         this.doc = ws.doc(this.id);
         this.pruneSelection();
         this.rebuild();
       }
-      if (evt === 'assets' && this.id) { this.tileSig = ''; this.paintSig = ''; this.rebuild(); }
+      if (evt === 'assets' && this.id) {
+        if (this.strip) { this.strip.grounds = {}; this.strip.rebuild(); return; }
+        this.tileSig = ''; this.paintSig = ''; this.rebuild();
+      }
     });
   }
 
@@ -82,6 +86,7 @@ export class MapEditor {
   /* ---------------- open + rebuild ---------------- */
 
   open(id) {
+    if (this.strip) this.strip.leave();
     if (this.working) this.cancelWork();
     this.id = id;
     this.doc = this.ws.doc(id);
@@ -97,6 +102,7 @@ export class MapEditor {
   // Compile the doc and bring the ground canvas up to date. `quick`: the
   // tiles changed under a brush stroke; skip the (slow) blended edges.
   rebuild({ quick = false } = {}) {
+    if (this.strip) { this.strip.rebuild(); this.ui.onDoc(); return; }
     if (!this.doc) return;
     this.map = compileMap(this.doc);
     this.view.invalidateNav();
@@ -194,6 +200,7 @@ export class MapEditor {
 
   // The box an item is edited by (buildings: their footprint).
   boxOf(s) {
+    if (this.strip) return this.strip.boxOf(s);
     const d = this.doc;
     switch (s.k) {
       case 'obj': {
@@ -213,6 +220,7 @@ export class MapEditor {
   }
 
   resizable(s) {
+    if (this.strip) return false;
     if (s.k === 'obj') { const o = this.doc.objects[s.i]; return !!o && (o.t === 'solid' || o.t === 'building'); }
     if (s.k === 'paint') { const o = this.doc.paint[s.i]; return !!o && (!!(PAINT_KINDS[o.op] || {}).rect || o.op === 'mud'); }
     return false;
@@ -220,6 +228,7 @@ export class MapEditor {
 
   // What's under world point (x, y): the topmost visible, selectable thing.
   pick(x, y, { points = true } = {}) {
+    if (this.strip) return this.strip.pick(x, y);
     const d = this.doc, L = this.layers, map = this.map;
     if (!map) return null;
     const tol = 6 / this.view.z;
@@ -285,6 +294,7 @@ export class MapEditor {
 
   // Everything whose anchor is inside a box (box-select).
   pickBox(x0, y0, x1, y1) {
+    if (this.strip) return this.strip.pickBox(x0, y0, x1, y1);
     const d = this.doc, L = this.layers, out = [];
     const bx = { x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) };
     d.objects.forEach((o, i) => {
@@ -340,6 +350,7 @@ export class MapEditor {
 
   // Start dragging the selection. Returns a mover: move(dxWorld, dyWorld, alt), end(), cancel().
   startMove(alt = false) {
+    if (this.strip) return this.strip.startMove();
     const start = clone(this.ws.doc(this.id));
     const items = this.sel.slice();
     const extra = [];
@@ -405,6 +416,7 @@ export class MapEditor {
   }
 
   handleAt(x, y) {
+    if (this.strip) return -1;
     if (this.sel.length !== 1 || !this.resizable(this.sel[0])) return -1;
     const b = this.boxOf(this.sel[0]);
     const r = 6 / this.view.z;
@@ -414,6 +426,7 @@ export class MapEditor {
   }
 
   nudge(dx, dy) {
+    if (this.strip) { this.strip.nudge(dx, dy); return; }
     if (!this.sel.length) return;
     this.edit('nudge', (d) => { this.shift(d, this.sel, dx, dy); });
   }
@@ -421,6 +434,7 @@ export class MapEditor {
   /* ---------------- delete / duplicate / copy / paste ---------------- */
 
   deleteSelection() {
+    if (this.strip) { this.strip.deleteSelection(); return; }
     if (!this.sel.length) return;
     const fixed = this.sel.filter(s => ['van', 'spawn', 'arrive', 'treeLine'].includes(s.k));
     if (fixed.length === this.sel.length) { toast('The van, the spawn point and story markers can be moved but not deleted', 'warn'); return; }
@@ -443,6 +457,7 @@ export class MapEditor {
   }
 
   copySelection() {
+    if (this.strip) { toast('On Highway 29, use DUPLICATE (Ctrl+D)', 'warn'); return false; }
     const d = this.ws.doc(this.id);
     const objects = this.sel.filter(s => s.k === 'obj').map(s => clone(d.objects[s.i])).filter(Boolean);
     const paint = this.sel.filter(s => s.k === 'paint').map(s => clone(d.paint[s.i])).filter(Boolean);
@@ -455,6 +470,7 @@ export class MapEditor {
 
   // Paste the clipboard centred on (x, y), or offset a little when no point is given.
   paste(at = null) {
+    if (this.strip) { toast('On Highway 29, use DUPLICATE (Ctrl+D)', 'warn'); return; }
     let clip = this.clip;
     if (!clip) { try { clip = JSON.parse(localStorage.getItem('aw-editor-clip') || 'null'); } catch { clip = null; } }
     if (!clip) { toast('Nothing copied yet', 'warn'); return; }
@@ -486,6 +502,7 @@ export class MapEditor {
   }
 
   duplicate() {
+    if (this.strip) { this.strip.duplicate(); return; }
     if (this.copySelection()) this.paste();
   }
 

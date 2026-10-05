@@ -89,7 +89,7 @@ export class Workspace {
   }
 
   name(id) {
-    const d = this.isStrip(id) ? null : this.doc(id);
+    const d = this.doc(id);
     return (d && d.name) || (MAP_INFO[id] && MAP_INFO[id].name) || id;
   }
 
@@ -239,7 +239,6 @@ export class Workspace {
   importDoc(raw, idOverride = null) {
     const doc = normalizeDoc(raw, idOverride || raw.id);
     if (!MAP_INFO[doc.id]) doc.custom = true;
-    if (this.isStrip(doc.id)) throw new Error('Highway 29 is streamed in as you play and has no map file');
     const exists = this.docs.has(doc.id) || this.mapIds().includes(doc.id);
     if (exists) this.commit(doc.id, doc, 'import');
     else { this.docs.set(doc.id, doc); this.drafts.maps[doc.id] = { doc, updated: Date.now() }; this.persist(); }
@@ -265,7 +264,6 @@ export class Workspace {
     this.flush();
     const maps = [];
     for (const id of this.mapIds()) {
-      if (this.isStrip(id)) continue;
       const dr = this.drafts.maps[id];
       if (!dr) continue;
       const pub = this.published.maps[id];
@@ -335,6 +333,7 @@ export function normalizeBundle(b) {
 // A doc as a file: readable, one ground row per line (so a diff of a map
 // edit shows which rows changed).
 export function formatDoc(doc) {
+  if (doc.strip) return JSON.stringify(doc, null, 2) + '\n';
   const { ground, objects, paint, ...head } = doc;
   const lines = ['{'];
   const entries = Object.entries(head);

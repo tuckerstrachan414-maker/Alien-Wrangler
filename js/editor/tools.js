@@ -296,6 +296,7 @@ export function makeTools(ed) {
     down(p) {
       const o = placeProp(p);
       if (!o) return;
+      if (ed.strip) { ed.strip.addPiece(o.a, o.x, o.y); return; }
       if (S.scatter) {
         ed.beginWork();
         ed.doc.objects.push(o);
@@ -563,7 +564,7 @@ export function makeTools(ed) {
   const erase = {
     id: 'erase', label: 'Erase', icon: '\u{1F9F9}', hotkey: 'e',
     help: 'Click (or drag over) props, hiding spots, boxes and ground art to delete them.',
-    down(p) { ed.beginWork(); this.on = true; this.zap(p); },
+    down(p) { if (ed.strip) { ed.strip.erase(ed.pick(p.x, p.y)); return; } ed.beginWork(); this.on = true; this.zap(p); },
     move(p) { if (this.on) this.zap(p); else this.hover(p); },
     zap(p) {
       const s = ed.pick(p.x, p.y, { points: false });

@@ -114,7 +114,7 @@ main { flex: 1; min-height: 0; display: flex; }
 #view-buttons { position: absolute; right: 8px; bottom: 8px; display: flex; gap: 4px; }
 #view-buttons button { min-width: 34px; height: 30px; font-size: 11px; }
 #strip-note {
-  position: absolute; left: 50%; top: 46px; transform: translateX(-50%); max-width: min(560px, 92%);
+  position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); max-width: min(560px, 80%);
   background: rgba(19, 25, 39, 0.95); border: 1px solid var(--gold); border-radius: 4px; padding: 8px 12px; font-size: 12px;
 }
 
@@ -262,3 +262,6 @@ main { flex: 1; min-height: 0; display: flex; }
   .ae-center { min-height: 55vh; flex: none; }
   .ae-side { width: auto; border-left: 0; border-top: 1px solid var(--line); overflow: visible; }
 }
+
+/* Highway 29: only the set-piece tools apply */
+body.strip-mode #toolbar .tool-btn:not([data-tool=select]):not([data-tool=pan]):not([data-tool=prop]):not([data-tool=erase]) { opacity: 0.25; pointer-events: none; }

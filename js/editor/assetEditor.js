@@ -359,10 +359,10 @@ export class AssetEditor {
   usage() {
     let n = 0;
     for (const id of this.ws.mapIds()) {
-      if (this.ws.isStrip(id)) continue;
       const d = this.ws.doc(id);
       if (!d) continue;
-      const hit = this.kind === 'prop' ? d.objects.some(o => o.t === 'prop' && o.a === this.id) : d.ground.some(r => r.includes(this.id));
+      const hit = d.strip ? this.kind === 'prop' && [...d.station, ...d.clearing].some(q => q.a === this.id)
+        : this.kind === 'prop' ? d.objects.some(o => o.t === 'prop' && o.a === this.id) : d.ground.some(r => r.includes(this.id));
       if (hit) n++;
     }
     return n ? `${n} map${n > 1 ? 's' : ''}` : '';

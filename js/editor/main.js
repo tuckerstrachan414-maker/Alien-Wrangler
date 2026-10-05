@@ -16,6 +16,7 @@ import { validate } from './validate.js';
 import { $, h, clear, toast, modal, formBox, confirmBox, popupMenu, download, pickFile, slug } from './dom.js';
 import { AssetEditor } from './assetEditor.js';
 import { openPublish, exportZip, importFiles } from './publish.js';
+import { STRIP_TOOLS } from './stripEditor.js';
 
 /* ---------------- assets, edits ---------------- */
 
@@ -51,6 +52,7 @@ const ui = {
 const ed = new MapEditor(ws, assets, ui);
 ed.tools = makeTools(ed);
 ed.setTool = (id) => {
+  if (ed.strip && !STRIP_TOOLS.includes(id)) { toast('On Highway 29 only Select, Pan, Prop and Erase apply (set pieces)', 'warn'); return; }
   if (ed.tool && ed.tool.cancel) ed.tool.cancel();
   ed.tool = ed.tools[id] || ed.tools.select;
   ed.hover = null;
@@ -103,7 +105,7 @@ function showTab(tab, sub) {
   if (tab === 'palette') renderPalette(ed, $('#tab-palette'), sub || ed.paletteSub);
   else if (tab === 'inspect') refreshInspector(true);
   else if (tab === 'layers') renderLayers(ed, $('#tab-layers'));
-  else if (tab === 'map') renderMapPanel(ed, $('#tab-map'), mapHooks);
+  else if (tab === 'map') { if (ed.strip) ed.strip.mapPanel($('#tab-map')); else renderMapPanel(ed, $('#tab-map'), mapHooks); }
   else if (tab === 'problems') renderProblems(ed, $('#tab-problems'), problems);
 }
 for (const b of document.querySelectorAll('#sidebar .tabs button')) {
@@ -117,6 +119,7 @@ for (const b of document.querySelectorAll('#sidebar .tabs button')) {
 function refreshInspector(force = false) {
   if (!force && ed.sel.length && activeTab !== 'inspect') { showTab('inspect'); return; }
   if (activeTab !== 'inspect') return;
+  if (ed.strip) { ed.strip.inspector($('#tab-inspect')); return; }
   renderInspector(ed, $('#tab-inspect'), { editAsset: (id) => { setMode('assets'); assetEditor.open('prop', id); } });
 }
 
@@ -125,13 +128,13 @@ function scheduleChecks() {
   clearTimeout(checkTimer);
   checkTimer = setTimeout(() => {
     if (!ed.map) return;
-    problems = validate(ed.doc, ed.map, assets.tiles);
+    problems = ed.strip ? [] : validate(ed.doc, ed.map, assets.tiles);
     const errs = problems.filter(p => p.sev === 'error').length, warns = problems.filter(p => p.sev === 'warn').length;
     const c = $('#problem-count');
     c.textContent = errs ? ` ${errs}` : warns ? ` ${warns}` : '';
     c.classList.toggle('warn', !errs && !!warns);
     if (activeTab === 'problems') renderProblems(ed, $('#tab-problems'), problems);
-    if (activeTab === 'map') renderMapPanel(ed, $('#tab-map'), mapHooks);
+    if (activeTab === 'map') { if (ed.strip) ed.strip.mapPanel($('#tab-map')); else renderMapPanel(ed, $('#tab-map'), mapHooks); }
   }, 250);
 }
 
@@ -139,7 +142,7 @@ function scheduleChecks() {
 
 function mapLabel(id) {
   const st = ws.status(id);
-  const tag = ws.isStrip(id) ? ' (set pieces)' : st.draft ? ' • edited' : st.published ? ' • published' : '';
+  const tag = (ws.isStrip(id) ? ' (set pieces)' : '') + (st.draft ? ' • edited' : st.published ? ' • published' : '');
   const kind = MAP_INFO[id] ? (MAP_INFO[id].story ? `Stage 1 · ` : '') : 'Custom · ';
   return `${kind}${ws.name(id)}${tag}`;
 }
@@ -313,7 +316,11 @@ function showHowItWorks() {
 
 let mode = 'map';
 const assetEditor = new AssetEditor($('#asset-mode'), ws, assets, {
-  changed: () => { ed.tileSig = ''; ed.paintSig = ''; if (ed.id && !ws.isStrip(ed.id)) ed.rebuild(); refreshSaveState(); },
+  changed: () => {
+    if (ed.strip) { ed.strip.grounds = {}; ed.strip.rebuild(); }
+    else if (ed.id) { ed.tileSig = ''; ed.paintSig = ''; ed.rebuild(); }
+    refreshSaveState();
+  },
   placeOnMap: (id) => { setMode('map'); ed.toolState.asset = id; ed.setTool('prop'); showTab('palette', 'props'); },
 });
 function setMode(m) {
@@ -343,12 +350,13 @@ function worldAt(e) {
 function updateStatus(p) {
   if (!ed.map || !p) return;
   const inMap = p.tx >= 0 && p.ty >= 0 && p.tx < ed.map.tw && p.ty < ed.map.th;
-  const tile = inMap ? tileName(ed.doc.ground[p.ty][p.tx]) : 'off the map';
+  const tile = inMap ? tileName(ed.map.ground[p.ty * ed.map.tw + p.tx]) : 'off the map';
   ui.status(`${Math.round(p.x)}, ${Math.round(p.y)} px · tile ${p.tx}, ${p.ty} (${tile}) · ${Math.round(ed.view.z * 100)}%${hoverName()}`);
 }
 function hoverName() {
   const s = ed.hover;
   if (!s) return '';
+  if (s.k === 'set') { const q = ed.strip && ed.strip.pieces[s.i]; return q ? ` · ${q.a} (set piece)` : ''; }
   if (s.k === 'obj') { const o = ed.doc.objects[s.i]; return o ? ` · ${o.t === 'prop' ? o.a : o.t === 'building' ? `${o.kind} "${o.id}"` : o.t === 'hide' ? 'hiding spot' : 'collision box'}` : ''; }
   return ` · ${s.k === 'pt' ? 'road point' : s.k === 'paint' ? ed.doc.paint[s.i].op : s.k}`;
 }

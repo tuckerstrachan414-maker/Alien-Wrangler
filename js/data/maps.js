@@ -5,7 +5,7 @@ import {
 } from './barnyardArt.js';
 import { paintPath } from '../terrain.js';
 import { PROPS, YARD, HWY, getAsset, assetId, cropAsset } from './assets.js';
-import { HighwayStrip, CW, NP, TH } from './highwayStrip.js';
+import { HighwayStrip, CW, NP, TH, STATION_SET, CLEARING_SET } from './highwayStrip.js';
 
 // A map = ground tile grid + props (with solids & hide spots) + van + player spawn.
 // World units are pixels; tiles are 16px.
@@ -969,12 +969,17 @@ export function buildBarnyard() {
 // creek, open woods, and Highway 29 with a gas station on the far side. The
 // woods stream in a piece at a time as the agent pushes on (highwayStrip.js
 // does the laying out and painting; the director decides what comes next).
-export function buildHighway29() {
+// The set pieces in it (the gas station, the clearing's stumps) come from
+// its doc (an edit of them, else STATION_SET / CLEARING_SET); `opts` is
+// for the map editor's preview: { edit, queue, after } lays the pieces it
+// wants to show straight away.
+export function buildHighway29(assets, opts = {}) {
   const m = new MapBuilder('Highway 29', NP * CW / TILE, TH, T.WOODS);
   m.record = false;                           // streamed in forever: never saved as a doc
   m.blend = true;
-  const strip = new HighwayStrip(m, PROPS, HWY);
+  const strip = new HighwayStrip(m, PROPS, HWY, opts.edit || EDITS.highway29 || null);
   m.strip = strip;
+  if (opts.queue) { strip.queue = opts.queue.slice(); strip.after = opts.after || 'forest'; }
   strip.init();
   m.paintGround = (g, tiles) => strip.paintGround(g, tiles);
   m.placeVan(150, Math.round(strip.trackY(173)) - 20);
@@ -1114,6 +1119,12 @@ export function normalizeDoc(raw, id = raw && raw.id) {
   if (!raw || typeof raw !== 'object') throw new Error('not a map');
   if (raw.format && raw.format !== DOC_FORMAT) throw new Error(`not a map file (${raw.format})`);
   if ((raw.version || 1) > DOC_VERSION) throw new Error(`made by a newer editor (version ${raw.version})`);
+  if (raw.strip || (MAP_INFO[id] && MAP_INFO[id].strip)) {
+    const pieces = (v, d) => (Array.isArray(v) ? v : d).filter(q => q && typeof q.a === 'string' && isFinite(q.x) && isFinite(q.base))
+      .map(q => ({ a: q.a, x: Math.round(+q.x), base: Math.round(+q.base) }));
+    return { format: DOC_FORMAT, version: DOC_VERSION, id: String(id), name: (MAP_INFO[id] && MAP_INFO[id].name) || String(id), strip: true,
+      station: pieces(raw.station, STATION_SET), clearing: pieces(raw.clearing, CLEARING_SET) };
+  }
   const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
   const tw = Math.max(4, Math.min(256, Math.round(num(raw.tw, 40))));
   const th = Math.max(4, Math.min(256, Math.round(num(raw.th, 34))));
@@ -1141,9 +1152,15 @@ export function normalizeDoc(raw, id = raw && raw.id) {
 const DEFAULT_DOCS = new Map();   // the builders' docs (they never change once built)
 let EDITS = {};                    // id -> doc that replaces the builder's (maps/<id>.json or a draft)
 
+// Highway 29's doc: just its set pieces (the rest streams in from code).
+export function defaultStripDoc(id = 'highway29') {
+  return { format: DOC_FORMAT, version: DOC_VERSION, id, name: MAP_INFO[id].name, strip: true, station: clone(STATION_SET), clearing: clone(CLEARING_SET) };
+}
+
 export function defaultMapDoc(id, assets) {
   const info = MAP_INFO[id];
-  if (!info || info.strip) return null;
+  if (!info) return null;
+  if (info.strip) return defaultStripDoc(id);
   const key = `${id}:${assets && assets.pngProps ? 'png' : 'drawn'}`;
   if (!DEFAULT_DOCS.has(key)) DEFAULT_DOCS.set(key, toDoc(info.build(assets), id));
   return clone(DEFAULT_DOCS.get(key));

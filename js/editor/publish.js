@@ -297,7 +297,6 @@ export function exportZip(ws, pendingOnly = false) {
     for (const [path, content] of Object.entries(plan.files)) files.push({ name: path, data: content });
   } else {
     for (const id of ws.mapIds()) {
-      if (ws.isStrip(id)) continue;
       const st = ws.status(id);
       if (!st.draft && !st.published) continue;
       ids.add(id);
@@ -331,7 +330,7 @@ export async function importFiles(ws, files) {
       out.assets = true;
       continue;
     }
-    if (j.ground && j.objects) {
+    if ((j.ground && j.objects) || j.strip) {
       const id = j.id || e.name.replace(/^.*\//, '').replace(/\.json$/i, '');
       const doc = ws.importDoc(j, id);
       out.maps.push(doc.id);

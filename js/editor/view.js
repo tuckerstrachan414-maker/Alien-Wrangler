@@ -299,6 +299,7 @@ export class MapView {
       ctx.strokeRect(Math.min(m.x0, m.x1), Math.min(m.y0, m.y1), Math.abs(m.x1 - m.x0), Math.abs(m.y1 - m.y0));
     }
     if (ed.tool && ed.tool.overlay) ed.tool.overlay(ctx, this, hair);
+    if (ed.strip) ed.strip.overlay(ctx, this, hair);
 
     // ---- labels, in screen space ----
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);

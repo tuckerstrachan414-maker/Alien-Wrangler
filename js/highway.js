@@ -31,7 +31,7 @@ import { TILE } from './data/sprites.js';
 import { StoryDirector } from './director.js';
 import { OBJECTIVES3, HINTS3, GLOW3 } from './data/stage1.js';
 import { buildHighwayActors } from './data/highwayArt.js';
-import { CW, NP, THK, FN, FS, CREEK_HW, STATION, FINAL_W, SPIRAL } from './data/highwayStrip.js';
+import { CW, NP, THK, FN, FS, CREEK_HW, FINAL_W, SPIRAL } from './data/highwayStrip.js';
 
 const rand = (a, b) => a + Math.random() * (b - a);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -585,7 +585,7 @@ export class HighwayScene extends StoryDirector {
     const from = Math.ceil((p.x + this.viewW() / 2 + 40) / CW) * CW;
     if (from + FINAL_W * CW > strip.w) return null;
     const pace = clamp(this.chaseDist / Math.max(1, this.chaseT), 70, 124);
-    const eta = this.chaseT + (from + STATION.stopX - (p.x + LEADS[1])) / pace;
+    const eta = this.chaseT + (from + this.strip.station.stopX - (p.x + LEADS[1])) / pace;
     return (eta >= CHASE_T - 0.3 || this.chaseT >= CHASE_T - 2) ? from : null;
   }
 
@@ -615,7 +615,7 @@ export class HighwayScene extends StoryDirector {
         this.final = true;
       }
     }
-    const stop = this.final ? this.finalX(STATION.stopX) : Infinity;
+    const stop = this.final ? this.finalX(this.strip.station.stopX) : Infinity;
     const packY = clamp(230 + 70 * Math.sin(this.chaseT * 0.45), FN + 50, FS - 70);
     const pv = Math.max(0, p.vx);
     let arrived = 0;
@@ -663,7 +663,7 @@ export class HighwayScene extends StoryDirector {
     this.enterCutscene();
     this.ownsPlayer = true;
     this.hint(null);
-    g.camTarget = { x: (p.x + this.finalX(STATION.stopX)) / 2, y: p.y };
+    g.camTarget = { x: (p.x + this.finalX(this.strip.station.stopX)) / 2, y: p.y };
     g.camEase = 0.04;
     // the one nearest his line does the shooting
     this.shooter = this.runners.slice().sort((a, b) => Math.abs(a.y - p.y) - Math.abs(b.y - p.y))[0];
@@ -740,13 +740,13 @@ export class HighwayScene extends StoryDirector {
   // it's pulled out.
   semiPos() {
     const S = this.art.semi, m = this.semiMove || { dx: 0, dy: 0 };
-    const x = this.finalX(STATION.semi.x) + m.dx, base = STATION.semi.base + m.dy;
+    const x = this.finalX(this.strip.station.semi.x) + m.dx, base = this.strip.station.semi.base + m.dy;
     return { x, y: base - S.base, base, cx: x + S.w / 2 };
   }
 
   storeDoor() {
     const D = this.strip.X.store.door, img = this.strip.X.store.img;
-    return { x: this.finalX(STATION.store.x) + D.x, y: STATION.store.base - img.height + D.y, w: D.w, h: D.h };
+    return { x: this.finalX(this.strip.station.store.x) + D.x, y: this.strip.station.store.base - img.height + D.y, w: D.w, h: D.h };
   }
 
   updateFinale(dt) {
@@ -777,7 +777,7 @@ export class HighwayScene extends StoryDirector {
         // over the road to the back of the semi
         this.runners.forEach((a, i) => {
           const tx = semi.cx + (i - 1) * 7, ty = semi.base + 16 + i * 4;
-          a.script = { path: [{ x: this.finalX(STATION.lanes[0]), y: a.y + (ty - a.y) * 0.3 }, { x: tx, y: ty }], i: 0, speed: rand(118, 132), wait: 0, face: null, hold: true };
+          a.script = { path: [{ x: this.finalX(this.strip.station.lanes[0]), y: a.y + (ty - a.y) * 0.3 }, { x: tx, y: ty }], i: 0, speed: rand(118, 132), wait: 0, face: null, hold: true };
           a.board = { at: { x: tx, y: ty }, delay: i * 0.35 };
         });
       }
@@ -789,7 +789,7 @@ export class HighwayScene extends StoryDirector {
       g.camTarget = cs.phase === 'board' ? { x: semi.cx, y: semi.base - 30 } : { x: cx, y: cy - 10 };
       g.camEase = 0.05;
       // a car comes down the southbound lane just behind the last of them
-      const lane = this.finalX(STATION.lanes[0]);
+      const lane = this.finalX(this.strip.station.lanes[0]);
       if (!this.car && this.runners.every(a => a.x > lane + 22)) {
         this.car = { x: lane, y: -50, v: 290 };
       }
@@ -885,8 +885,8 @@ export class HighwayScene extends StoryDirector {
         m.v = Math.min(170, m.v + 70 * dt);
         m.dy -= m.v * dt;
         // pulls out into the northbound lane as it goes
-        const laneX = this.finalX(STATION.lanes[1]) - S.w / 2;
-        const home = this.finalX(STATION.semi.x);
+        const laneX = this.finalX(this.strip.station.lanes[1]) - S.w / 2;
+        const home = this.finalX(this.strip.station.semi.x);
         m.dx = (laneX - home) * clamp(-m.dy / 110, 0, 1);
         g.camTarget = { x: semi.cx, y: Math.max(semi.y + 60, 90) };
         g.camEase = 0.05;
@@ -968,7 +968,7 @@ export class HighwayScene extends StoryDirector {
       const d = this.driver;
       if (d && d.doorOpen) {
         const D = this.storeDoor();
-        items.push({ y: STATION.store.base + 0.5, draw: (ctx, camX, camY) => {
+        items.push({ y: this.strip.station.store.base + 0.5, draw: (ctx, camX, camY) => {
           ctx.fillStyle = '#141019'; ctx.fillRect(D.x - camX, D.y - camY, D.w, D.h);
           ctx.fillStyle = '#3a3226'; ctx.fillRect(D.x + 1 - camX, D.y + 1 - camY, D.w - 2, D.h - 1);
           ctx.fillStyle = '#616b7a'; ctx.fillRect(D.x + D.w - camX, D.y - camY, 3, D.h);     // door swung open
