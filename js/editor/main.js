@@ -322,8 +322,8 @@ function setMode(m) {
   $('#map-mode').classList.toggle('hidden', m !== 'map');
   $('#asset-mode').classList.toggle('hidden', m !== 'assets');
   $('.map-picker').classList.toggle('hidden', m !== 'map');
-  if (m === 'assets') assetEditor.show();
-  else { ed.view.resize(); if (activeTab === 'palette') renderPalette(ed, $('#tab-palette'), ed.paletteSub); }
+  if (m === 'assets') { assetEditor.show(); $('#btn-undo').disabled = false; $('#btn-redo').disabled = false; }
+  else { ed.view.resize(); refreshTop(); if (activeTab === 'palette') renderPalette(ed, $('#tab-palette'), ed.paletteSub); }
 }
 for (const b of document.querySelectorAll('.modes button')) b.addEventListener('click', () => setMode(b.dataset.mode));
 

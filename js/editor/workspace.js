@@ -28,6 +28,26 @@ export class Workspace {
     this.lastSaveError = null;
     this.assetBundle = clone(this.drafts.assets || published.assets || emptyAssetBundle());
     for (const k of ['props', 'customProps', 'tiles', 'customTiles', 'actors']) this.assetBundle[k] = this.assetBundle[k] || {};
+    this.pruneDrafts();
+  }
+
+  // Drafts that now match what's published (a publish has deployed) are
+  // done with; so are deletions the published manifest already reflects.
+  pruneDrafts() {
+    let changed = false;
+    for (const [id, dr] of Object.entries(this.drafts.maps)) {
+      if (!dr) { delete this.drafts.maps[id]; changed = true; continue; }
+      if (dr.deleted) { if (!this.published.maps[id]) { delete this.drafts.maps[id]; changed = true; } continue; }
+      const base = this.baseDoc(id);
+      let doc = null;
+      try { doc = normalizeDoc(dr.doc, id); } catch { /* unreadable: leave it */ }
+      if (doc && base && same(base, doc)) { delete this.drafts.maps[id]; changed = true; }
+    }
+    if (this.drafts.assets && same(normalizeBundle(this.drafts.assets), normalizeBundle(this.published.assets || emptyAssetBundle()))) {
+      this.drafts.assets = null;
+      changed = true;
+    }
+    if (changed) this.persist();
   }
 
   on(fn) { this.listeners.add(fn); return () => this.listeners.delete(fn); }
@@ -284,18 +304,16 @@ export class Workspace {
   }
 
   // After a publish went through: what's published is what we have now.
+  // The drafts stay (identical to what was published) until the site has
+  // redeployed with the new files, so the game in this browser never shows
+  // the old version in between; pruneDrafts() drops them on a later load.
   markPublished() {
     const { pend } = this.publishFiles();
     for (const c of pend.maps) {
       if (c.action === 'delete') delete this.published.maps[c.id];
       else this.published.maps[c.id] = clone(c.doc);
-      delete this.drafts.maps[c.id];
     }
-    for (const [id, dr] of Object.entries(this.drafts.maps)) if (dr && dr.deleted) delete this.drafts.maps[id];
-    if (pend.assets) {
-      this.published.assets = pend.assets === 'delete' ? null : clone(this.assetBundle);
-      this.drafts.assets = null;
-    }
+    if (pend.assets) this.published.assets = pend.assets === 'delete' ? null : clone(this.assetBundle);
     this.persist();
     this.emit('maps');
   }
