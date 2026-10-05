@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0c14">
+<title>Alien Wrangler Editor</title>
+<link rel="stylesheet" href="css/font.css">
+<link rel="stylesheet" href="css/editor.css">
+</head>
+<body>
+  <div id="app" class="booting">
+    <header id="topbar">
+      <a class="brand" href="./" title="Back to the game">ALIEN WRANGLER <b>EDITOR</b></a>
+      <nav class="modes" role="tablist">
+        <button data-mode="map" class="on" role="tab">MAPS</button>
+        <button data-mode="assets" role="tab">ASSETS</button>
+      </nav>
+      <div class="map-picker" data-for="map">
+        <select id="map-select" aria-label="Map"></select>
+        <button id="btn-new-map" title="Make a brand-new map">+ NEW</button>
+      </div>
+      <div class="top-actions">
+        <button id="btn-undo" title="Undo (Ctrl+Z)" aria-label="Undo">&#x21B6;</button>
+        <button id="btn-redo" title="Redo (Ctrl+Shift+Z)" aria-label="Redo">&#x21B7;</button>
+        <span id="save-state" title="Every change is saved as a draft in this browser straight away"></span>
+        <button id="btn-play" class="primary" title="Play this map in the game, with your drafts">&#9654; PLAY TEST</button>
+        <button id="btn-publish" class="accent" title="Make your changes part of the game for everyone">PUBLISH&hellip;</button>
+        <button id="btn-more" title="Import, export, revert" aria-label="More">&#x22EF;</button>
+      </div>
+    </header>
+
+    <main id="map-mode">
+      <aside id="toolbar" aria-label="Tools"></aside>
+      <section id="viewport">
+        <canvas id="view"></canvas>
+        <div id="tool-options"></div>
+        <div id="status"></div>
+        <div id="view-buttons">
+          <button data-zoom="in" title="Zoom in (+)">+</button>
+          <button data-zoom="out" title="Zoom out (-)">&minus;</button>
+          <button data-zoom="fit" title="Fit the map (0)">FIT</button>
+        </div>
+        <div id="strip-note" class="hidden"></div>
+      </section>
+      <aside id="sidebar">
+        <nav class="tabs" role="tablist">
+          <button data-tab="palette" class="on">ADD</button>
+          <button data-tab="inspect">EDIT</button>
+          <button data-tab="layers">VIEW</button>
+          <button data-tab="map">MAP</button>
+          <button data-tab="problems">CHECK<span id="problem-count"></span></button>
+        </nav>
+        <div class="tab-body" id="tab-palette"></div>
+        <div class="tab-body hidden" id="tab-inspect"></div>
+        <div class="tab-body hidden" id="tab-layers"></div>
+        <div class="tab-body hidden" id="tab-map"></div>
+        <div class="tab-body hidden" id="tab-problems"></div>
+      </aside>
+    </main>
+
+    <main id="asset-mode" class="hidden"></main>
+
+    <div id="boot-msg">LOADING EDITOR&hellip;</div>
+  </div>
+  <div id="modal-root"></div>
+  <div id="toast-root" aria-live="polite"></div>
+  <script type="module" src="js/editor/main.js"></script>
+</body>
+</html>

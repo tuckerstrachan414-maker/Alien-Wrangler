@@ -1,5 +1,5 @@
-import { TILE, flipX } from './data/sprites.js';
-import { MAP_BUILDERS } from './data/maps.js';
+import { flipX } from './data/sprites.js';
+import { buildMap } from './data/maps.js';
 import { gearEffects, ALIEN_STATS, abandonFee, WEAPONS, GADGETS } from './data/missions.js';
 import { buildNav, collide } from './nav.js';
 import { Player, Alien } from './entities.js';
@@ -12,7 +12,7 @@ import {
   renderGround, renderTop, drawCage, snoreCloud,
 } from './weapons.js';
 import { DecoyAgent } from './decoy.js';
-import { blendGround } from './terrain.js';
+import { paintMapGround } from './groundRender.js';
 
 const DEPOSIT_R = 30;
 const ACTIONS = ['jump', 'dash', 'dive', 'grab', 'gadget1', 'gadget2'];
@@ -44,20 +44,12 @@ export class Game {
     this.fx = gearEffects(mission.gear || save.gear);
     // only two gadgets ride along: [slot 1 = tap / button 1, slot 2 = swipe right / button 2]
     this.loadout = resolveLoadout(mission.gear || save.gear);
-    this.map = MAP_BUILDERS[mission.map](this.assets);
+    this.map = buildMap(mission.map, this.assets);
     this.nav = buildNav(this.map);
     this.hideSpots = this.map.hideSpots;
 
     // pre-render ground
-    this.groundCv = document.createElement('canvas');
-    this.groundCv.width = this.map.w; this.groundCv.height = this.map.h;
-    const g = this.groundCv.getContext('2d');
-    g.imageSmoothingEnabled = false;
-    for (let ty = 0; ty < this.map.th; ty++)
-      for (let tx = 0; tx < this.map.tw; tx++)
-        g.drawImage(this.assets.tiles[this.map.ground[ty * this.map.tw + tx]], tx * TILE, ty * TILE);
-    if (this.map.blend) blendGround(g, this.map, this.assets.tiles);
-    if (this.map.paintGround) this.map.paintGround(g, this.assets.tiles);
+    this.groundCv = paintMapGround(this.map, this.assets.tiles);
 
     this.player = new Player(this.map.spawn.x, this.map.spawn.y, this.fx);
     this.aliens = [];
@@ -533,7 +525,7 @@ export class Game {
     }
 
     if (this.stealth) this.updateStealth(dt);
-    if (this.map.volcano) this.updateVolcano(dt);
+    if (this.map.volcanoes.length) this.updateVolcano(dt);
     if (this.map.smoke.length) this.updateSmoke(dt);
 
     // dive capture sweep
@@ -819,13 +811,14 @@ export class Game {
     this.volcanoT += dt;
     if (this.volcanoT < 0.22) return;
     this.volcanoT = 0;
-    const v = this.map.volcano;
-    this.particles.push({
-      x: v.x + (Math.random() - 0.5) * 10, y: v.y - 4,
-      vx: (Math.random() - 0.5) * 8, vy: -16 - Math.random() * 8,
-      grav: -5, life: 2.2, t: 2.2,
-      color: Math.random() < 0.3 ? '#8a8078' : '#b8b0a8', size: 2,
-    });
+    for (const v of this.map.volcanoes) {
+      this.particles.push({
+        x: v.x + (Math.random() - 0.5) * 10, y: v.y - 4,
+        vx: (Math.random() - 0.5) * 8, vy: -16 - Math.random() * 8,
+        grav: -5, life: 2.2, t: 2.2,
+        color: Math.random() < 0.3 ? '#8a8078' : '#b8b0a8', size: 2,
+      });
+    }
   }
 
   // Thin grey columns drifting up off the crashed pods.
