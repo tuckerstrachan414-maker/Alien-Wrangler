@@ -21,6 +21,14 @@ const DEFAULT = {
   story: {                 // Stage 1 (tutorial) progress
     introSeen: false,      // watched (or skipped) the opening briefing
     scenesCleared: 0,      // highest scene of Stage 1 finished
+    stage2: {              // Stage 2 progress
+      introSeen: false,    // watched (or skipped) the signal briefing
+      lockerTut: false,    // done (or skipped) the Field Locker tutorial
+      scenesCleared: 0,    // highest scene of Stage 2 finished
+      paid: [],            // scenes that have already paid out (first clear only)
+    },
+    wallet: null,          // the story's own money + gear locker, opened by the
+                           // Stage 2 briefing: { cash, gear, loadout, advancedSlot }
   },
 };
 
@@ -43,15 +51,36 @@ function normalize() {
     gear: { ...(sb.gear || {}) },
   };
   const st = (save.story && typeof save.story === 'object') ? save.story : {};
+  const s2 = (st.stage2 && typeof st.stage2 === 'object') ? st.stage2 : {};
+  const count = (n) => (Number.isFinite(n) ? Math.max(0, Math.floor(n)) : 0);
   save.story = {
     introSeen: st.introSeen === true,
-    scenesCleared: Number.isFinite(st.scenesCleared) ? Math.max(0, Math.floor(st.scenesCleared)) : 0,
+    scenesCleared: count(st.scenesCleared),
+    stage2: {
+      introSeen: s2.introSeen === true,
+      lockerTut: s2.lockerTut === true,
+      scenesCleared: count(s2.scenesCleared),
+      paid: Array.isArray(s2.paid) ? s2.paid.filter(n => Number.isInteger(n) && n > 0) : [],
+    },
+    wallet: normalizeWallet(st.wallet),
   };
   if (!save.gear || typeof save.gear !== 'object') save.gear = {};
   save.loadout = Array.isArray(save.loadout) ? save.loadout.filter(id => typeof id === 'string').slice(0, 2) : [];
   save.advancedSlot = typeof save.advancedSlot === 'string' ? save.advancedSlot : null;
   migrateGear(save.gear);
   migrateGear(save.sandbox.gear);
+  if (save.story.wallet) migrateGear(save.story.wallet.gear);
+}
+
+// The story wallet, or null if the Stage 2 briefing hasn't opened it yet.
+function normalizeWallet(w) {
+  if (!w || typeof w !== 'object') return null;
+  return {
+    cash: Number.isFinite(w.cash) ? Math.max(0, Math.floor(w.cash)) : 0,
+    gear: (w.gear && typeof w.gear === 'object') ? { ...w.gear } : {},
+    loadout: Array.isArray(w.loadout) ? w.loadout.filter(id => typeof id === 'string').slice(0, 2) : [],
+    advancedSlot: typeof w.advancedSlot === 'string' ? w.advancedSlot : null,
+  };
 }
 
 // Tracker Goggles were replaced by the Noise Maker (same two price tiers), so

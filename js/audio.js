@@ -149,4 +149,20 @@ export const sfx = {
   // the agent dragging himself along, and giving up
   scrape:  () => noise(0.16, 0.05, 0, 200, 1400),
   sigh:    () => { tone(330, 0.4, 'triangle', 0.07, -60); tone(247, 0.7, 'triangle', 0.07, -70, 0.35); },
+  // ---- Stage 2 ----
+  // a case folder changing hands, then flipped open
+  paper:   () => { noise(0.12, 0.08, 0, 2200, 7000); noise(0.18, 0.06, 0.1, 1600, 6000); },
+  // the ops-room door's lock clicking
+  door:    () => { tone(1400, 0.03, 'square', 0.04); noise(0.05, 0.06, 0.03, 900, 4000); },
+  // the alien signal coming through: a warbling carrier and its overtone
+  signal:  () => {
+    [0, 0.22, 0.44, 0.66].forEach((d, i) => tone(i % 2 ? 330 : 262, 0.26, 'sine', 0.05, i % 2 ? -70 : 90, d));
+    tone(1320, 0.9, 'sine', 0.012, 330, 0.05);
+  },
+  // a siren rising and falling, not far off
+  siren:   () => { [0, 0.5, 1.0].forEach(d => { tone(660, 0.25, 'sawtooth', 0.035, 330, d); tone(990, 0.25, 'sawtooth', 0.03, -330, d + 0.25); }); },
+  // the van pulling up: tyres, then the handbrake
+  brake:   () => { noise(0.45, 0.06, 0, 1800, 5000); tone(70, 0.4, 'sawtooth', 0.05, -25); noise(0.08, 0.06, 0.45, 300, 2000); },
+  // money moving: one tick of a balance counting up or down
+  coin:    () => tone(1250 + Math.random() * 200, 0.035, 'square', 0.035),
 };

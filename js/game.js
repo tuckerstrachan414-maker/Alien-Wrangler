@@ -25,6 +25,35 @@ const DIVE_CONE = Math.cos(30 * Math.PI / 180);
 // Field Drones Mk.II paints each tier its own arrow colour.
 const TIER_COLORS = { grunt: '#7be06a', scout: '#6ec2ff', trooper: '#d7dfea', elite: '#c78bff' };
 
+// Night lighting (map.night): a soft pool of light, as a stamp. Pixel art,
+// so the falloff steps down through a few levels, ordered-dithered between
+// them; squashed to an ellipse because it lies on the ground. Cached by
+// radius. `warm` is the coloured glow added back over the top.
+const BAYER4 = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+const STAMPS = new Map();
+function lightStamp(r, warm = false) {
+  const key = `${r}${warm ? 'w' : ''}`;
+  let c = STAMPS.get(key);
+  if (c) return c;
+  c = document.createElement('canvas');
+  c.width = r * 2; c.height = Math.ceil(r * 1.4);
+  const g = c.getContext('2d');
+  const ry = r * 0.7;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      const d = Math.hypot((x + 0.5 - r) / r, (y + 0.5 - ry) / ry);
+      if (d >= 1) continue;
+      const a = Math.min(1, (1 - d) * 1.6);
+      const lv = Math.min(4, Math.floor(a * 4 + BAYER4[(y & 3) * 4 + (x & 3)])) / 4;
+      if (lv <= 0) continue;
+      g.fillStyle = warm ? `rgba(255, 196, 128, ${lv * 0.5})` : `rgba(0, 0, 0, ${lv})`;
+      g.fillRect(x, y, 1, 1);
+    }
+  }
+  STAMPS.set(key, c);
+  return c;
+}
+
 // The van's glowing rear door: on the right as drawn (nose left), on the
 // left when a map turns it round (van.flip).
 function vanDoorOf(v) {
@@ -43,7 +72,8 @@ export class Game {
     // Sandbox runs carry their own loadout; contracts use what you own.
     this.fx = gearEffects(mission.gear || save.gear);
     // only two gadgets ride along: [slot 1 = tap / button 1, slot 2 = swipe right / button 2]
-    this.loadout = resolveLoadout(mission.gear || save.gear);
+    // (a story scene brings the story wallet's own slot order)
+    this.loadout = resolveLoadout(mission.gear || save.gear, mission.loadoutPref);
     this.map = MAP_BUILDERS[mission.map](this.assets);
     this.nav = buildNav(this.map);
     this.hideSpots = this.map.hideSpots;
@@ -410,6 +440,12 @@ export class Game {
     this.captured++;
     if (!this.mission.sandbox) save.totalCaptured++;
     if (this.ufo && this.ufo.target === a) this.ufo.state = 'pick';
+    // a story scene that pays: this one's worth its bounty (banked if the
+    // scene is cleared)
+    if (this.mission.payPerAlien) {
+      this.earned += this.mission.payPerAlien;
+      this.popup(this.vanDoor.x, this.vanDoor.y - 34, `+$${this.mission.payPerAlien}`, '#ffd75e');
+    }
     this.emit('secure', a);
   }
 
@@ -806,6 +842,11 @@ export class Game {
   // The block waking up doesn't cost a fine any more — it blows the whole
   // job. Everyone scatters and the mission ends right there as a loss.
   noiseComplaint() {
+    // a story scene plays it out (and never mid-cutscene)
+    if (this.director) {
+      if (!this.director.locked && this.director.on) this.director.on('busted');
+      return;
+    }
     this.shake = 6;
     sfx.alert();
     this.announce('NEIGHBORS CALLED THE COPS!', 2.4);
@@ -844,21 +885,37 @@ export class Game {
     }
   }
 
-  // A story scene is over (the director calls this). No pay, no deductions:
-  // just what happened, for the story results screen.
+  // A story scene is over (the director calls this). No deductions: just
+  // what happened (and, in a scene that pays, what it earned), for the story
+  // results screen.
   finishStory(extra = {}) {
     if (!this.running) return;
     this.running = false;
     const results = {
-      mission: this.mission, story: true, captured: this.captured,
+      mission: this.mission, story: true, captured: this.captured, earned: this.earned,
       total: this.totalAliens, cleared: true, abandoned: false, ...extra,
     };
     if (this.onEnd) this.onEnd(results);
   }
 
-  // pay = base minus escaped aliens and noise fines (both cost escapeCost)
+  // A story scene was lost (the neighbours called the cops): nothing banked,
+  // nothing cleared; the results screen offers a retry.
+  failStory(extra = {}) {
+    if (!this.running) return;
+    this.running = false;
+    sfx.fail();
+    const results = {
+      mission: this.mission, story: true, captured: this.captured, earned: 0,
+      total: this.totalAliens, cleared: false, failed: true, abandoned: false, ...extra,
+    };
+    if (this.onEnd) this.onEnd(results);
+  }
+
+  // pay = base minus escaped aliens and noise fines (both cost escapeCost);
+  // a story scene shows what it's made so far
   projectedPay() {
     const m = this.mission;
+    if (m.story) return this.earned;
     return Math.max(0, m.pay - (this.escaped + this.fines) * m.escapeCost);
   }
 
@@ -1016,6 +1073,9 @@ export class Game {
       }
     }
 
+    // night (Quiet Oaks): the dark, with the lights cut out of it
+    if (map.night) this.drawNight(ctx, camX, camY, vw, vh);
+
     // stealth: lit windows on woken homes + expanding noise rings
     if (this.stealth) {
       for (const h of this.homes) {
@@ -1140,10 +1200,84 @@ export class Game {
     ctx.textAlign = 'left';
   }
 
+  // Real night: darkness over the whole world, with soft pools of light cut
+  // out of it round the street lamps, porch lights and lit windows (and
+  // round any window someone has just switched on), a little moonlight round
+  // the agent so he's never lost in it, and any lights a story scene adds
+  // (headlights, the police). Then a faint warm glow added back on top.
+  // Lights off screen are skipped.
+  drawNight(ctx, camX, camY, vw, vh) {
+    const n = this.map.night;
+    if (!this.nightCv || this.nightCv.width !== vw || this.nightCv.height !== vh) {
+      this.nightCv = document.createElement('canvas');
+      this.nightCv.width = vw; this.nightCv.height = vh;
+      this.nightCtx = this.nightCv.getContext('2d');
+    }
+    const g = this.nightCtx;
+    const extra = this.director && this.director.nightLights ? this.director.nightLights() : [];
+    const visible = (l) => {
+      const sx = l.x - camX, sy = l.y - camY;
+      return sx + l.r > 0 && sx - l.r < vw && sy + l.r > 0 && sy - l.r < vh;
+    };
+    const at = (l) => [Math.round(l.x - camX - l.r), Math.round(l.y - camY - l.r * 0.7)];
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    g.clearRect(0, 0, vw, vh);
+    g.fillStyle = n.dark;
+    g.fillRect(0, 0, vw, vh);
+    g.globalCompositeOperation = 'destination-out';
+    const cut = (l) => {
+      if (!visible(l)) return;
+      g.globalAlpha = l.k ?? 1;
+      const [x, y] = at(l);
+      g.drawImage(lightStamp(l.r), x, y);
+    };
+    for (const l of n.lights) cut(l);
+    for (const h of this.homes) if (h.alertT > 0) cut({ x: h.x + h.w / 2, y: h.y + h.h + 12, r: 34, k: Math.min(1, h.alertT) });
+    for (const l of extra) cut(l);
+    cut({ x: this.player.x, y: this.player.y - 4, r: 30, k: 0.5 });
+    g.globalAlpha = 1;
+    g.globalCompositeOperation = 'source-over';
+    ctx.drawImage(this.nightCv, 0, 0);
+    // the warm glow back over the top
+    ctx.globalCompositeOperation = 'lighter';
+    for (const l of n.lights.concat(extra)) {
+      if (!l.warm || !visible(l)) continue;
+      ctx.globalAlpha = l.warm * (l.k ?? 1);
+      const [x, y] = at(l);
+      ctx.drawImage(lightStamp(l.r, true), x, y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+  }
+
   drawSuspicion(ctx, vw) {
     const s = this.suspicion / 100;
-    const bw = 70, bh = 6, bx = (vw / 2 - bw / 2) | 0, by = 46;
     const col = s > 0.8 ? '#ff5e6c' : s > 0.5 ? '#ffd75e' : '#59d98c';
+    // a story scene's objective panel and radio take the space under the
+    // HUD, so there the meter rides in the top row, between the pills
+    const gap = this.director && this.hudGap;
+    if (gap && gap.x1 - gap.x0 > 60) {
+      const room = gap.x1 - gap.x0 - 8;
+      const bw = Math.max(30, Math.min(70, room - 26)), bh = 5;
+      const bx = Math.round((gap.x0 + gap.x1) / 2 - (bw + 24) / 2) + 24, by = Math.round((gap.y0 + gap.y1) / 2 - bh / 2);
+      ctx.fillStyle = '#0d0f1a'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
+      ctx.fillStyle = '#2a3350'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
+      ctx.fillStyle = '#11141f'; ctx.fillRect(bx, by, bw, bh);
+      ctx.globalAlpha = s > 0.8 ? 0.7 + 0.3 * Math.sin(this.time * 16) : 1;
+      ctx.fillStyle = col; ctx.fillRect(bx, by, Math.round(bw * s), bh);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#0d0f1a';
+      ctx.fillRect(bx + (bw * 0.5 | 0), by, 1, bh);
+      ctx.fillRect(bx + (bw * 0.8 | 0), by, 1, bh);
+      ctx.font = 'bold 6px monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#0a0c14'; ctx.fillText('NOISE', bx - 4, by + bh);
+      ctx.fillStyle = col; ctx.fillText('NOISE', bx - 5, by + bh - 1);
+      ctx.textAlign = 'left';
+      return;
+    }
+    const bw = 70, bh = 6, bx = (vw / 2 - bw / 2) | 0, by = 46;
     // frame
     ctx.fillStyle = '#0d0f1a'; ctx.fillRect(bx - 2, by - 2, bw + 4, bh + 4);
     ctx.fillStyle = '#2a3350'; ctx.fillRect(bx - 1, by - 1, bw + 2, bh + 2);
@@ -1212,11 +1346,13 @@ export class Game {
       const img = A[p.facing] || A.down;
       const lift = Math.round(p.z);
       this.drawWalking(ctx, img, x - 6, y - 15 - lift, p.walkT, p.moving && p.z === 0);
-      // carried aliens stacked overhead
+      // carried aliens stacked overhead (straining to get away, if a story
+      // scene says so)
       let stackY = y - 27 - lift + Math.round(Math.sin(this.time * 8) * 1);
+      const wig = p.strain ? Math.round(Math.sin(this.time * 30) * p.strain) : 0;
       for (const a of p.carried) {
         const spr = this.assets.actors.aliens[a.tier].down;
-        ctx.drawImage(spr, x - 5, stackY - 10);
+        ctx.drawImage(spr, x - 5 + wig, stackY - 10);
         stackY -= 9;
       }
       if (p.state === 'stunned') this.drawStars(ctx, x, y - 20 - lift);

@@ -122,6 +122,7 @@ export const MAP_LIST = [
   { id: 'tropical', name: 'Isla Verde', note: 'Jungle and a volcano' },
   { id: 'farmfields', name: 'Farm Fields', note: 'Stage 1 crash site' },
   { id: 'barnyard', name: 'Barnyard', note: 'Walk-in barn + greenhouse' },
+  { id: 'quietoaks', name: 'Quiet Oaks', note: 'Stage 2 suburb, night + noise' },
 ];
 
 export const SANDBOX_TIMES = [120, 180, 300, 600, 0];   // 0 = no time limit

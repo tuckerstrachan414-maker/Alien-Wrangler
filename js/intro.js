@@ -11,7 +11,8 @@
 //
 // The pictures are drawn into the game's low-res buffer (main.js calls
 // update/render while its state is 'intro'). The dialogue box, choice, SKIP
-// and title card are DOM in #cine so the text gets the pixel font.
+// and title card are DOM in #cine so the text gets the pixel font; the box
+// and the room itself are shared with Stage 2's briefing (cutscene.js).
 //
 // The pull-back is a real camera move: the replay is rendered at the
 // monitor's aspect, sized to cover the screen, and the room and the replay
@@ -21,36 +22,16 @@ import { sfx } from './audio.js';
 import { buildShip, shatter, buildMiniPod, buildDebris, pixelText, textWidth } from './data/storyArt.js';
 import { drawSeal } from './briefing.js';
 import { STAGE1 } from './data/stage1.js';
+import {
+  DialogueBox, roomLayout, drawOpsRoom, drawDesk, drawMonitor, floorShadow,
+  lerp, easeInOut, rand, hash, blink, disc, makeCanvas,
+} from './cutscene.js';
 
 const FEED_T = 7.0;      // replay, full screen
 const ZOOM_T = 2.2;      // pull back to the ops room
 const SETTLE_T = 0.7;    // beat before Voss speaks
 const OUT_T = 3.4;       // fade + title card after ACCEPT ORDERS
 const HORIZON = 0.8;     // replay horizon, as a fraction of the screen height
-const CPS = 42;          // dialogue typing speed (chars/s)
-
-const lerp = (a, b, t) => a + (b - a) * t;
-const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-const rand = (a, b) => a + Math.random() * (b - a);
-const hash = (i) => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
-
-// filled pixel disc
-function disc(ctx, cx, cy, r, col) {
-  ctx.fillStyle = col;
-  cx = Math.round(cx); cy = Math.round(cy); r = Math.max(0, Math.round(r));
-  for (let dy = -r; dy <= r; dy++) {
-    const half = Math.floor(Math.sqrt(r * r - dy * dy) + 0.35);
-    ctx.fillRect(cx - half, cy + dy, half * 2 + 1, 1);
-  }
-}
-
-function makeCanvas(w, h) {
-  const c = document.createElement('canvas');
-  c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h));
-  const x = c.getContext('2d');
-  x.imageSmoothingEnabled = false;
-  return [c, x];
-}
 
 /* ============================ THE REPLAY ============================ */
 // Action runs in "window" coords (u, v in 0..1 across the visible screen)
@@ -355,8 +336,6 @@ function screenBg(ctx, R, col, starsSeed) {
   }
 }
 
-const blink = (tm, rate = 3) => Math.floor(tm * rate) % 2 === 0;
-
 const SCREENS = {
   orbit(ctx, R, tm) {
     screenBg(ctx, R, '#03060f', 17);
@@ -536,112 +515,18 @@ export class Intro {
     this.feedCv = null; this.feedCtx = null;
     this.roomCv = null; this.roomCtx = null;
     this.seal = (() => { const c = document.createElement('canvas'); c.width = 26; c.height = 26; drawSeal(c); return c; })();
-    this.blinkT = 2; this.blinking = 0;
-    this.mouth = 'closed';
     this.agentHop = 0;
-    this.buildDom();
+    this.box = new DialogueBox(root, {
+      speaker: STAGE1.intro.speaker,
+      portrait: assets.voss.portrait,
+      lines: STAGE1.intro.lines.map(l => l.text),
+      choice: STAGE1.intro.choice,
+      onChoice: () => this.accept(),
+      onSkip: () => this.skip(),
+      onTap: () => this.advance(),
+      card: { stage: STAGE1.name, scene: `SCENE 1: ${STAGE1.scenes[0].name.toUpperCase()}` },
+    });
     setTimeout(() => sfx.rumble(), 250);
-  }
-
-  /* ---------- DOM: dialogue box, choice, skip, title card ---------- */
-
-  buildDom() {
-    const el = (tag, cls, html) => {
-      const e = document.createElement(tag);
-      if (cls) e.className = cls;
-      if (html !== undefined) e.innerHTML = html;
-      return e;
-    };
-    const r = this.root;
-    r.innerHTML = '';
-    r.classList.remove('hidden', 'fade-out');
-
-    this.skipBtn = el('button', 'cine-skip', 'SKIP');
-    this.skipBtn.addEventListener('click', (e) => { e.stopPropagation(); sfx.click(); this.skip(); });
-
-    this.dlg = el('div', 'dlg pending');
-    this.face = el('canvas', 'dlg-face pixel-canvas');
-    this.face.width = 28; this.face.height = 30;
-    const body = el('div', 'dlg-body');
-    body.appendChild(el('div', 'dlg-name', STAGE1.intro.speaker));
-    this.textEl = el('div', 'dlg-text');
-    body.appendChild(this.textEl);
-    this.nextEl = el('i', 'dlg-next hidden');
-    this.dlg.appendChild(this.face);
-    this.dlg.appendChild(body);
-    this.dlg.appendChild(this.nextEl);
-
-    this.choiceEl = el('div', 'dlg-choice hidden');
-    const accept = el('button', 'menu-btn primary', STAGE1.intro.choice);
-    accept.addEventListener('click', (e) => { e.stopPropagation(); this.accept(); });
-    this.choiceEl.appendChild(accept);
-
-    this.card = el('div', 'title-card hidden',
-      `<div class="tc-stage">${STAGE1.name}</div>` +
-      `<div class="tc-scene">SCENE 1: ${STAGE1.scenes[0].name.toUpperCase()}</div>`);
-
-    this.dlg.appendChild(this.choiceEl);
-    r.appendChild(this.dlg);
-    r.appendChild(this.skipBtn);
-    r.appendChild(this.card);
-    // a tap anywhere else moves things along
-    r.addEventListener('click', () => this.advance());
-    this.drawFace();
-    // size the box for the longest line up front, so it never grows mid-scene
-    // (and the room laid out above it never jumps)
-    this.fitBox = () => {
-      const longest = STAGE1.intro.lines.reduce((a, l) => (l.text.length > a.length ? l.text : a), '');
-      const keep = this.textEl.innerHTML;
-      this.textEl.style.minHeight = '';
-      this.textEl.textContent = longest.toUpperCase();
-      this.textEl.style.minHeight = `${this.textEl.offsetHeight}px`;
-      this.textEl.innerHTML = keep;
-    };
-    this.fitBox();
-    window.addEventListener('resize', this.fitBox);
-  }
-
-  drawFace() {
-    const frame = this.blinking > 0 ? 'blink' : this.mouth;
-    if (frame === this.faceFrame) return;
-    this.faceFrame = frame;
-    const x = this.face.getContext('2d');
-    x.clearRect(0, 0, 28, 30);
-    x.drawImage(this.assets.voss.portrait[frame], 0, 0);
-  }
-
-  // Split a line into plain / emphasised runs: a word the script writes in
-  // capitals ("YOU") keeps its punch once everything is upper-cased.
-  setLine(text) {
-    this.textEl.innerHTML = '';
-    this.runs = [];
-    for (const part of text.split(/\b([A-Z]{2,})\b/)) {
-      if (!part) continue;
-      const em = /^[A-Z]{2,}$/.test(part);
-      const span = document.createElement(em ? 'em' : 'span');
-      const shown = document.createElement('span');
-      const ghost = document.createElement('span');
-      ghost.className = 'ghost';
-      ghost.textContent = part.toUpperCase();
-      span.appendChild(shown); span.appendChild(ghost);
-      this.textEl.appendChild(span);
-      this.runs.push({ text: part.toUpperCase(), shown, ghost });
-    }
-    this.total = this.runs.reduce((n, r) => n + r.text.length, 0);
-    this.typed = 0;
-    this.shownChars = 0;
-    this.lineDone = false;
-    this.nextEl.classList.add('hidden');
-  }
-
-  paintTyped() {
-    let left = Math.floor(this.typed);
-    for (const r of this.runs) {
-      const n = Math.max(0, Math.min(r.text.length, left));
-      r.shown.textContent = r.text.slice(0, n);
-      r.ghost.textContent = r.text.slice(n);
-      left -= r.text.length;
-    }
   }
 
   /* ---------- flow ---------- */
@@ -654,7 +539,7 @@ export class Intro {
 
   startTalk() {
     this.phase = 'talk';
-    this.dlg.classList.remove('pending');
+    this.box.show();
     this.nextLine();
   }
 
@@ -662,24 +547,21 @@ export class Intro {
     this.li++;
     const line = STAGE1.intro.lines[this.li];
     this.setScreen(line.screen);
-    this.setLine(line.text);
+    this.box.setLine(line.text);
   }
 
   finishLine() {
-    this.typed = this.total;
-    this.paintTyped();
-    this.lineDone = true;
-    this.mouth = 'closed';
+    this.box.complete();
     if (this.li >= STAGE1.intro.lines.length - 1) this.showChoice();
-    else this.nextEl.classList.remove('hidden');
+    else this.box.showNext(true);
   }
 
   showChoice() {
     if (this.phase === 'choice') return;
     this.phase = 'choice';
-    this.nextEl.classList.add('hidden');
-    this.choiceEl.classList.remove('hidden');
-    this.skipBtn.classList.add('hidden');
+    this.box.showNext(false);
+    this.box.showChoice(true);
+    this.box.showSkip(false);
   }
 
   // tap / Enter / A button
@@ -689,7 +571,7 @@ export class Intro {
       this.phase = 'settle'; this.t = 0;
       this.setScreen('static');
     } else if (this.phase === 'talk') {
-      if (!this.lineDone) this.finishLine();
+      if (!this.box.lineDone) this.finishLine();
       else if (this.li < STAGE1.intro.lines.length - 1) { sfx.click(); this.nextLine(); }
     } else if (this.phase === 'choice') {
       this.accept();
@@ -699,7 +581,7 @@ export class Intro {
   // SKIP / Esc / Start: the whole briefing, straight to the order
   skip() {
     if (this.phase === 'choice' || this.phase === 'out') return;
-    this.dlg.classList.remove('pending');
+    this.box.show();
     this.li = STAGE1.intro.lines.length - 2;
     this.nextLine();
     this.finishLine();
@@ -710,8 +592,8 @@ export class Intro {
     this.phase = 'out';
     this.t = 0;
     sfx.accept();
-    this.choiceEl.classList.add('hidden');
-    this.skipBtn.classList.add('hidden');
+    this.box.showChoice(false);
+    this.box.showSkip(false);
     this.agentHop = 0.001;
   }
 
@@ -722,10 +604,7 @@ export class Intro {
   }
 
   destroy() {
-    window.removeEventListener('resize', this.fitBox);
-    this.root.innerHTML = '';
-    this.root.classList.add('hidden');
-    this.root.classList.remove('fade-out');
+    this.box.destroy();
   }
 
   update(dt) {
@@ -742,31 +621,14 @@ export class Intro {
     else if (this.phase === 'zoom' && this.t >= ZOOM_T) { this.phase = 'settle'; this.t = 0; this.setScreen('static'); }
     else if (this.phase === 'settle' && this.t >= SETTLE_T) this.startTalk();
 
-    if (this.phase === 'talk' && !this.lineDone) {
-      const before = Math.floor(this.typed);
-      this.typed = Math.min(this.total, this.typed + dt * CPS);
-      const now = Math.floor(this.typed);
-      if (now !== before) {
-        this.paintTyped();
-        // a voice blip every other letter
-        const all = this.runs.map(r => r.text).join('');
-        for (let i = before; i < now; i++) if (/[A-Z]/.test(all[i]) && i % 3 === 0) { sfx.voice(); break; }
-      }
-      this.mouth = Math.floor(this.clock * 9) % 2 ? 'open' : 'closed';
-      if (this.typed >= this.total) this.finishLine();
-    }
-
-    // blinking, now and then
-    this.blinkT -= dt;
-    if (this.blinkT <= 0) { this.blinking = 0.13; this.blinkT = 2 + Math.random() * 2.5; }
-    this.blinking = Math.max(0, this.blinking - dt);
-    this.drawFace();
+    // the line typing on (and Voss blinking, now and then)
+    this.box.update(dt, this.phase === 'talk', () => this.finishLine());
 
     if (this.agentHop > 0) this.agentHop += dt;
     if (this.phase === 'out') {
-      if (this.t >= 1.0 && this.card.classList.contains('hidden')) {
-        this.dlg.classList.add('hidden');
-        this.card.classList.remove('hidden');
+      if (this.t >= 1.0 && this.box.card.classList.contains('hidden')) {
+        this.box.hide();
+        this.box.showCard();
         sfx.typeReturn();
       }
       if (this.t >= OUT_T && !this.accepted) {
@@ -778,58 +640,8 @@ export class Intro {
 
   /* ---------- drawing ---------- */
 
-  // Room layout for this screen: the monitor, where people stand, and where
-  // the DOM dialogue box starts (so nobody stands behind it).
   layout(vw, vh) {
-    const k = vh / Math.max(1, window.innerHeight);
-    const box = this.dlg.getBoundingClientRect();
-    const dlgTop = box.height ? Math.min(vh, Math.floor(box.top * k)) : Math.floor(vh * 0.66);
-    const portrait = vh > vw;
-    let mw, mh;
-    if (portrait) {
-      mw = Math.min(vw - 18, 156) & ~1;
-      mh = Math.round(mw * 0.58);
-    } else {
-      mh = Math.max(40, Math.min(dlgTop - 38, 96));
-      mw = Math.round(mh / 0.58);
-      if (mw > vw * 0.6) { mw = Math.round(vw * 0.6); mh = Math.round(mw * 0.58); }
-    }
-    // portrait: the seal above the screen, people out on the floor, a console
-    // desk in the foreground; landscape: everything in one band above the box
-    const my = portrait ? Math.max(44, Math.round(dlgTop * 0.2))
-      : Math.max(6, Math.round((dlgTop - mh - 50) * 0.35));
-    const R = { x: Math.round((vw - mw) / 2), y: my, w: mw, h: mh };
-    const wallBottom = R.y + R.h + 16;
-    const floor = dlgTop - wallBottom;
-    const feetY = portrait ? Math.round(wallBottom + Math.max(22, floor * 0.4)) : Math.min(dlgTop - 3, wallBottom + 22);
-    const desk = dlgTop - feetY > 44 ? { y: dlgTop - 26 } : null;
-    const spread = Math.min(mw * 0.32, 46);
-    return { vw, vh, dlgTop, R, wallBottom, feetY, desk, vossX: Math.round(vw / 2 - spread), agentX: Math.round(vw / 2 + spread) };
-  }
-
-  // Foreground console: desk top, the backs of two screens, keyboard lights.
-  drawDesk(ctx, L) {
-    const { vw, vh } = L, y = L.desk.y, t = this.clock;
-    for (const cx of [Math.round(vw * 0.2), Math.round(vw * 0.8)]) {
-      ctx.fillStyle = '#05070d'; ctx.fillRect(cx - 14, y - 17, 28, 17);
-      ctx.fillStyle = '#1b2338'; ctx.fillRect(cx - 13, y - 16, 26, 15);
-      ctx.fillStyle = '#26304a'; ctx.fillRect(cx - 13, y - 16, 26, 1);
-      ctx.globalAlpha = 0.25; ctx.fillStyle = '#6ec2ff'; ctx.fillRect(cx - 12, y - 19, 24, 2); ctx.globalAlpha = 1;
-    }
-    ctx.fillStyle = '#05070d'; ctx.fillRect(0, y - 1, vw, vh - y + 1);
-    ctx.fillStyle = '#2b3654'; ctx.fillRect(0, y, vw, 3);
-    ctx.fillStyle = '#3a4768'; ctx.fillRect(0, y, vw, 1);
-    ctx.fillStyle = '#121828'; ctx.fillRect(0, y + 3, vw, vh - y - 3);
-    for (let x = 6; x < vw - 6; x += 5) {
-      const on = hash(x * 3 + Math.floor(t * 2)) > 0.55;
-      ctx.fillStyle = on ? (hash(x) < 0.5 ? '#59d98c' : '#6ec2ff') : '#1f2840';
-      ctx.fillRect(x, y + 7, 2, 1);
-    }
-    // a mug, because there is always a mug
-    const mx = Math.round(vw * 0.35);
-    ctx.fillStyle = '#05070d'; ctx.fillRect(mx - 1, y - 6, 7, 6);
-    ctx.fillStyle = '#d7dfea'; ctx.fillRect(mx, y - 5, 5, 5); ctx.fillRect(mx + 5, y - 4, 1, 2);
-    ctx.fillStyle = '#b3261e'; ctx.fillRect(mx, y - 3, 5, 1);
+    return roomLayout(vw, vh, this.box.dlg);
   }
 
   poses() {
@@ -837,7 +649,7 @@ export class Intro {
     let voss = 'right', agent = 'up';
     if (this.phase === 'talk' || this.phase === 'choice' || this.phase === 'out') {
       if (line.pose === 'monitor') voss = 'up';
-      if (line.pose === 'point') { voss = this.lineDone ? 'right' : 'pointR'; agent = 'left'; }
+      if (line.pose === 'point') { voss = this.box.lineDone ? 'right' : 'pointR'; agent = 'left'; }
     }
     if (this.phase === 'choice') { voss = 'right'; agent = 'left'; }
     if (this.phase === 'out') { voss = 'right'; agent = this.t > 0.35 ? 'down' : 'left'; }
@@ -845,93 +657,24 @@ export class Intro {
   }
 
   drawRoom(ctx, L) {
-    const { vw, vh, R, wallBottom, feetY } = L;
-    const t = this.clock;
-    // back wall: dark panels, trim, ceiling strip with lights
-    ctx.fillStyle = '#141a2c'; ctx.fillRect(0, 0, vw, wallBottom);
-    for (let x = (vw / 2 % 22) | 0; x < vw; x += 22) { ctx.fillStyle = '#0f1424'; ctx.fillRect(x, 8, 1, wallBottom - 8); ctx.fillStyle = '#19203a'; ctx.fillRect(x + 1, 8, 1, wallBottom - 8); }
-    ctx.fillStyle = '#0a0d18'; ctx.fillRect(0, 0, vw, 8);
-    for (let x = (vw / 2 % 48) - 3 | 0; x < vw; x += 48) {
-      ctx.fillStyle = '#cfe8ff'; ctx.fillRect(x, 6, 6, 1);
-      ctx.globalAlpha = 0.06; ctx.fillStyle = '#cfe8ff'; ctx.fillRect(x - 6, 7, 18, 20); ctx.globalAlpha = 1;
-    }
-    ctx.fillStyle = '#232c46'; ctx.fillRect(0, wallBottom - 4, vw, 1);
-    ctx.fillStyle = '#0c1020'; ctx.fillRect(0, wallBottom - 3, vw, 3);
-    // agency seal above the screen, when there's room for it
-    if (R.y >= 44) ctx.drawImage(this.seal, Math.round(vw / 2 - 13), Math.max(11, Math.round((R.y + 8) / 2 - 13)));
-    // equipment racks either side of the screen, LEDs blinking
-    for (const rx of [R.x - 22, R.x + R.w + 8]) {
-      if (rx < 2 || rx + 14 > vw - 2) continue;
-      ctx.fillStyle = '#05070d'; ctx.fillRect(rx - 1, R.y - 1, 16, R.h + 2);
-      ctx.fillStyle = '#1b2338'; ctx.fillRect(rx, R.y, 14, R.h);
-      for (let y = R.y + 3; y < R.y + R.h - 3; y += 5) {
-        ctx.fillStyle = '#10152a'; ctx.fillRect(rx + 1, y + 3, 12, 1);
-        const on = hash(Math.floor(t * 3) + y * 7 + rx) > 0.4;
-        ctx.fillStyle = on ? (hash(y + rx) < 0.5 ? '#59d98c' : '#41f0d8') : '#23304a';
-        ctx.fillRect(rx + 2, y, 1, 1);
-        ctx.fillStyle = hash(Math.floor(t * 5) + y) > 0.7 ? '#ff5e6c' : '#23304a';
-        ctx.fillRect(rx + 5, y, 1, 1);
-      }
-    }
-    // floor
-    ctx.fillStyle = '#0d1120'; ctx.fillRect(0, wallBottom, vw, vh - wallBottom);
-    ctx.fillStyle = '#121830';
-    for (let y = wallBottom + 5, s = 5; y < vh; s += 2, y += s) ctx.fillRect(0, y, vw, 1);
-    for (let x = (vw / 2 % 24) | 0; x < vw; x += 24) ctx.fillRect(x, wallBottom, 1, vh - wallBottom);
-    // the screen's glow on the wall and floor
-    ctx.globalAlpha = 0.07; ctx.fillStyle = '#6ec2ff';
-    ctx.fillRect(R.x - 8, R.y - 8, R.w + 16, R.h + 16);
-    ctx.fillRect(R.x, wallBottom, R.w, Math.min(vh - wallBottom, 30));
-    ctx.globalAlpha = 1;
-    // monitor bezel
-    ctx.fillStyle = '#05070d'; ctx.fillRect(R.x - 4, R.y - 4, R.w + 8, R.h + 8);
-    ctx.fillStyle = '#2b2f38'; ctx.fillRect(R.x - 3, R.y - 3, R.w + 6, R.h + 6);
-    ctx.fillStyle = '#434a56'; ctx.fillRect(R.x - 3, R.y - 3, R.w + 6, 1);
-    ctx.fillStyle = '#05070d'; ctx.fillRect(R.x - 1, R.y - 1, R.w + 2, R.h + 2);
-    ctx.fillStyle = '#59d98c'; ctx.fillRect(R.x + R.w - 4, R.y + R.h + 1, 1, 1);
-    ctx.fillStyle = Math.floor(t * 2) % 2 ? '#ff5e6c' : '#5a1a24'; ctx.fillRect(R.x + R.w - 7, R.y + R.h + 1, 1, 1);
+    const { feetY } = L;
+    drawOpsRoom(ctx, L, this.clock, this.seal);
 
     // Voss and the agent
     const { voss, agent } = this.poses();
     const A = this.assets.actors.player, VS = this.assets.voss;
-    const shadow = (x) => {
-      ctx.globalAlpha = 0.35; ctx.fillStyle = '#000';
-      ctx.beginPath(); ctx.ellipse(x, feetY, 6, 2, 0, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
-    };
-    shadow(L.vossX); shadow(L.agentX);
-    const talkBob = this.phase === 'talk' && !this.lineDone && this.mouth === 'open' ? 1 : 0;
+    floorShadow(ctx, L.vossX, feetY); floorShadow(ctx, L.agentX, feetY);
+    const talkBob = this.phase === 'talk' && !this.box.lineDone && this.box.mouth === 'open' ? 1 : 0;
     const vImg = { right: VS.right, up: VS.up, pointR: VS.pointR }[voss] || VS.right;
     ctx.drawImage(vImg, L.vossX - 6, feetY - 15 - talkBob);
     let hop = 0;
     if (this.agentHop > 0.35 && this.agentHop < 1.0) hop = Math.round(Math.abs(Math.sin((this.agentHop - 0.35) * Math.PI * 3)) * 3);
     ctx.drawImage(A[agent] || A.up, L.agentX - 6, feetY - 15 - hop);
-    if (L.desk) this.drawDesk(ctx, L);
+    if (L.desk) drawDesk(ctx, L, this.clock);
   }
 
   drawScreen(ctx, R) {
-    const s = this.screen;
-    ctx.save();
-    ctx.beginPath(); ctx.rect(R.x, R.y, R.w, R.h); ctx.clip();
-    const fn = SCREENS[s.mode];
-    if (fn) fn(ctx, R, s.t);
-    else { ctx.fillStyle = '#05070d'; ctx.fillRect(R.x, R.y, R.w, R.h); }
-    if (s.staticT > 0 || s.mode === 'static') {
-      // snow + a rolling tear
-      for (let i = 0; i < R.w * R.h * 0.35; i++) {
-        const v = Math.random() * 200 | 0;
-        ctx.fillStyle = `rgb(${v},${v},${v + 20})`;
-        ctx.fillRect(R.x + (Math.random() * R.w | 0), R.y + (Math.random() * R.h | 0), 1, 1);
-      }
-      ctx.fillStyle = 'rgba(230, 240, 255, 0.25)';
-      ctx.fillRect(R.x, R.y + ((this.clock * 120) % R.h | 0), R.w, 2);
-    }
-    // scanlines + a glint of glass
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
-    for (let y = R.y; y < R.y + R.h; y += 2) ctx.fillRect(R.x, y, R.w, 1);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
-    ctx.fillRect(R.x + 2, R.y + 2, Math.round(R.w * 0.3), 1);
-    ctx.restore();
+    drawMonitor(ctx, R, SCREENS, this.screen, this.clock);
   }
 
   // The replay canvas: monitor-shaped, big enough to cover the screen when

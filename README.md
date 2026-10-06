@@ -72,13 +72,47 @@ no money, shop or upgrades anywhere in it: base kit only, no clock, no UFO, no p
    drives off up the highway. Back to the agent, dragging himself after it on his stomach, until he puts
    his head down in the dirt. Fade to black. No radio in this one: he's on his own out there.
 
-Scene 4 is on its way. All the story text lives in `js/data/stage1.js`.
+Clearing Scene 3 offers **CONTINUE** straight into Stage 2. All of Stage 1's story text lives in `js/data/stage1.js`.
+
+## 📖 Story — Stage 2: The Signal
+
+Stage 2 is where money and equipment come into the story. It unlocks once Stage 1 is cleared.
+
+1. **Briefing cutscene.** Days after the escape, back in the ops room: Handler Voss, the agent, and an analyst
+   at her desk with her back to us, decoding (she never turns round). A signal is being mass broadcast across
+   the continent; the wall monitor follows along (the broadcast, the decoder, the invasion, CCTV of the black semi,
+   Quiet Oaks). Voss walks over and **hands the agent a folder**: the partial transcript pops up, the decoded words in
+   plain type and the rest as `!@#$&` symbols that never stop re-rolling. Close it and he carries on: the message looks
+   like instructions to study Earth and prepare it for invasion, probably sent by one of the three from the truck, so
+   go and bring them in. "Do not fail this time agent." The agent heads for the door, "But before you go…", turns back,
+   "You might need some gear". Tap to move it along, **SKIP** for the whole thing.
+2. **The Field Locker.** The agency opens a **story wallet** with **$500** in it. The first time, a short hands-on
+   tutorial (one short line at a time, the thing it's talking about lit up, everything else dimmed) walks you through:
+   the balance, browsing the gear, tapping a card, buying something you can afford, the gadget going into slot 1,
+   the Skills tab, and that **every alien you bag pays $150**. Then **DEPLOY**.
+3. **Scene 1: Quiet Oaks.** A sleeping subdivision at night, with Maple Street's **noise rules**. The van rolls in
+   along Acorn Ln with its headlights on and the agent climbs out. Three aliens (the three from the truck) are hiding in
+   three different yards; each one loaded into the van pays $150 (the HUD's cash pill shows the scene's takings).
+   Voss warns you when it's getting loud. Fill the NOISE meter and every light on the street snaps on, the sirens
+   start, the aliens scatter, and the scene is **failed** (RETRY SCENE; nothing is banked). **Grab the third** and the
+   signal comes through: his catch's eyes light up, more of them creep out of the bushes and walk in out of the dark
+   (mostly Grunts, a couple of Scouts, an armoured Trooper, a shimmering Elite), stand round him taking in the message,
+   then turn as one and **march off together, two by two, out of the QUIET OAKS gate**. He keeps hold of his. Voss: "Agent?"
+
+**Money in the story.** The story has its own wallet and its own gear locker, separate from PLAY mode's bank and
+gear. A scene pays per alien secured, banked when the scene is cleared, and **only the first time** you clear it
+(replays show "ALREADY PAID OUT"). Spend it in the **LOCKER** (on the Stage 2 card, or from a scene's results);
+every gadget and skill is on sale at the usual prices.
+
+All of Stage 2's words live in `js/data/stage2.js`, including the signal transcript. It's **filler for now**: write
+one string per line, and any word in `[square brackets]` shows up undeciphered.
 
 ## 📺 Menus
 
-- **STORY** — Stage 1: **PLAY STAGE 1** from the briefing, or tap a scene to jump straight into it once
-  it's open (Scene 1 after the briefing, each later scene once the one before is cleared). Clearing a scene offers
-  **CONTINUE** straight into the next one.
+- **STORY** — one card per stage. **PLAY STAGE 1 / 2** from the briefing, or tap a scene to jump straight into it once
+  it's open (Scene 1 after the stage's briefing, each later scene once the one before is cleared). Clearing a scene offers
+  **CONTINUE** straight into the next one. Stage 2's card also shows the story wallet's **BALANCE**, the **LOCKER**, and
+  the **SIGNAL FILE** (the transcript Voss handed over).
 - **PLAY** — the field-ops hub: **DEPLOY** for the mission ladder, **EQUIPMENT** for the upgrade shop.
 - **MISSION BRIEFING** — deploying on a contract opens a short classified CIA memo that types itself out
   (with typewriter sound) beside your personnel file: a 2-3 sentence situation report (including map rules
@@ -175,6 +209,14 @@ deducted from it. You need at least one capture to clear a mission and unlock th
 
 - **Barnyard** *(Stage 1)* — a big red barn and a glass greenhouse you can walk into (their roofs fade
   away while you're inside), a stone well, bushes and a north tree line. Also playable in Sandbox.
+- **Quiet Oaks** *(Stage 2)* — a sleeping subdivision at night with Maple Street's noise rules. Oak Hollow Dr comes
+  in through the brick QUIET OAKS entrance and runs north to a cul-de-sac round the old Quiet Oak; Acorn Ln crosses it.
+  Fourteen houses, every one facing its street (the near side shows its fronts, the far side its backs, the cul-de-sac's
+  stand side on), each with a driveway to its garage and a car nose-in, a walk to the porch, a mailbox and the bins
+  out at the curb, and a fenced backyard (pools, play sets, sheds, trampolines). Cars parked along the curbs face the
+  way traffic runs on their side, clear of driveways, hydrants and the intersection. Real night lighting: dark, with
+  pools of light round the street lamps, porch lights and lit windows (and any window someone's just switched on).
+  Also playable in Sandbox.
 - **Highway 29** *(Stage 1, story only)* — endless woods that stream in as you go, a creek, open woods,
   and a two-lane highway with a gas station across it. It's built around Scene 3's script (the woods
   only end when the director says so), so it isn't in Sandbox.
@@ -249,11 +291,17 @@ js/briefing.js      mission brief: CIA memo builder, alien intel cards, typewrit
 js/loadout.js       two-slot gadget loadout (resolve against owned gear, equip / cycle / swap)
 js/weapons.js       every hand-fired gadget: fire / cooldown / world fx, shared by the agent and decoys
 js/decoy.js         Decoy Agent AI (flank-and-herd hunting, uses your gear, can't grab)
+js/cutscene.js      shared ops-room cutscene pieces: the dialogue box (typed lines, talking portrait, SKIP, title card), the room, the monitor, the walk cycle
 js/intro.js         Stage 1 opening cutscene: satellite replay, pull-back to the ops room, Voss's briefing
+js/signalBriefing.js Stage 2 opening cutscene: the analyst, the monitor screens, the folder hand-over, the walk-out
+js/transcript.js    the signal transcript popup (manila folder, decoded words, re-rolling undeciphered ones)
+js/lockerTutorial.js the Field Locker's first-time coach marks (spotlight, arrow, Voss's bubble, waits for you to do it)
+js/account.js       whose money and gear a screen works with: the PLAY-mode bank or the story wallet
 js/director.js      shared story-scene director: objective panel, hints, Voss's radio, markers, cutscene letterbox
 js/tutorial.js      Stage 1 Scene 1 director: tutorial steps, hints, radio, the stampede cutscene
 js/barnyard.js      Stage 1 Scene 2 director: arrival, secure 6, the run for the tree line
 js/highway.js       Stage 1 Scene 3 director: the endless hunt, the van on the fire road, the creek, the chase, the shock gun, the getaway
+js/quietoaks.js     Stage 2 Scene 1 director: the van rolling in, the hunt under the noise rules, the gathering and the march, getting busted
 js/terrain.js       dithered fades between ground textures + smooth painted roads
 js/data/sprites.js  all pixel art (palettes + grids + prop drawings)
 js/data/storyArt.js story art: Handler Voss, the alien cruiser + pods, 3x5 pixel font
@@ -261,9 +309,11 @@ js/data/barnyardArt.js  Scene 2 art: walk-in barn + greenhouse (roof shell + cut
 js/data/highwayArt.js   Scene 3 art: woods props, the semi, the trucker, a car, gas station + store, the agent's crawl, ground painters
 js/data/highwayStrip.js Scene 3 streaming world: lays out and paints the woods a piece at a time from world coordinates, slides the canvas along
 js/data/stage1.js   Stage 1 script: briefing lines, objectives, hints, radio lines (every scene)
-js/data/maps.js     the seven maps, and walk-in buildings (MapBuilder.building)
+js/data/stage2.js   Stage 2 script: Voss's briefing, the signal transcript (filler), the locker tutorial, Quiet Oaks' radio, hints and tips
+js/data/quietOaksArt.js Stage 2 art: suburban houses (front / back / side on), cars facing any way, oaks, yards, street furniture, the entrance; ground painters
+js/data/maps.js     the maps (Quiet Oaks' street plan too), and walk-in buildings (MapBuilder.building)
 js/data/missions.js mission ladder, sandbox builder, alien stats, gear catalog + weapon tuning
-js/save.js          localStorage save (progress + settings + sandbox loadout)
+js/save.js          localStorage save (progress + settings + sandbox loadout + the story wallet)
 js/audio.js         WebAudio synth SFX
 ```
 
